@@ -9,4 +9,6 @@ public interface UserService {
 
     UserResponse getUser(Long id);
 
+    UserResponse getUserByEmail(String email);
+
 }
