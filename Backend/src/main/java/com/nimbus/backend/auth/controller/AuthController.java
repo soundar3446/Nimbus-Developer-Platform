@@ -4,6 +4,7 @@ import com.nimbus.backend.auth.dto.AuthenticationResponse;
 import com.nimbus.backend.auth.dto.LoginRequest;
 import com.nimbus.backend.auth.dto.RegisterRequest;
 import com.nimbus.backend.auth.service.AuthenticationService;
+import com.nimbus.backend.auth.service.CurrentUserService;
 import com.nimbus.backend.common.dto.ApiResponse;
 import com.nimbus.backend.user.dto.UserResponse;
 import com.nimbus.backend.user.service.UserService;
@@ -11,8 +12,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -22,6 +21,7 @@ public class AuthController {
 
     private final AuthenticationService authenticationService;
     private final UserService userService;
+    private final CurrentUserService currentUserService;
 
     /**
      * POST /api/auth/register
@@ -58,9 +58,10 @@ public class AuthController {
      * Fetches the current authenticated user's profile info using the active token session.
      */
     @GetMapping("/me")
-    public ResponseEntity<ApiResponse<UserResponse>> getMyProfile(@AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<UserResponse>> getMyProfile() {
         // userDetails.getUsername() retrieves the email injected into the SecurityContext by the JWT Filter
-        UserResponse response = userService.getUserByEmail(userDetails.getUsername());
+        String currentEmail = currentUserService.getCurrentUserEmail();
+        UserResponse response = userService.getUserByEmail(currentEmail);
 
         ApiResponse<UserResponse> apiResponse = new ApiResponse<>(
                 true,

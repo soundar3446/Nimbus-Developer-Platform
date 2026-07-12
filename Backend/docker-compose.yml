@@ -32,6 +32,8 @@ services:
         SPRING_DATASOURCE_USERNAME: postgres
         SPRING_DATASOURCE_PASSWORD: postgres
       restart: always
+      env_file:
+        - config.env
 
 
 volumes:

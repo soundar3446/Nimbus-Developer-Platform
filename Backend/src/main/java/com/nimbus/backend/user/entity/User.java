@@ -2,6 +2,7 @@ package com.nimbus.backend.user.entity;
 
 import com.nimbus.backend.common.entity.BaseEntity;
 import com.nimbus.backend.common.enums.UserRole;
+import com.nimbus.backend.github.entity.GitHubIntegration;
 import com.nimbus.backend.project.entity.Project;
 import jakarta.persistence.*;
 import lombok.*;
@@ -33,6 +34,9 @@ public class User extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     private UserRole userRole;
+
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private GitHubIntegration githubIntegration;
 
     @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

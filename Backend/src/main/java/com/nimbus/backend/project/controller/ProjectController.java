@@ -8,8 +8,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,10 +25,9 @@ public class ProjectController {
      */
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> createProject(
-            @Valid @RequestBody ProjectRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @Valid @RequestBody ProjectRequest request) {
 
-        ProjectResponse response = projectService.createProject(request, userDetails);
+        ProjectResponse response = projectService.createProject(request);
         ApiResponse<ProjectResponse> apiResponse = new ApiResponse<>(
                 true,
                 "Project created successfully",
@@ -44,10 +41,9 @@ public class ProjectController {
      * Retrieves all projects belonging to the currently logged-in user.
      */
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ProjectResponse>>> getAllProjects(
-            @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<List<ProjectResponse>>> getAllProjects() {
 
-        List<ProjectResponse> response = projectService.getAllUserProjects(userDetails);
+        List<ProjectResponse> response = projectService.getAllUserProjects();
         ApiResponse<List<ProjectResponse>> apiResponse = new ApiResponse<>(
                 true,
                 "Projects retrieved successfully",
@@ -62,10 +58,9 @@ public class ProjectController {
      */
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ProjectResponse>> getProjectById(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable Long id) {
 
-        ProjectResponse response = projectService.getProjectById(id, userDetails);
+        ProjectResponse response = projectService.getProjectById(id);
         ApiResponse<ProjectResponse> apiResponse = new ApiResponse<>(
                 true,
                 "Project retrieved successfully",
@@ -81,10 +76,9 @@ public class ProjectController {
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<ProjectResponse>> updateProject(
             @PathVariable Long id,
-            @Valid @RequestBody ProjectRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @Valid @RequestBody ProjectRequest request) {
 
-        ProjectResponse response = projectService.updateProject(id, request, userDetails);
+        ProjectResponse response = projectService.updateProject(id, request);
         ApiResponse<ProjectResponse> apiResponse = new ApiResponse<>(
                 true,
                 "Project updated successfully",
@@ -99,10 +93,9 @@ public class ProjectController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteProject(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable Long id) {
 
-        projectService.deleteProject(id, userDetails);
+        projectService.deleteProject(id);
         ApiResponse<Void> apiResponse = new ApiResponse<>(
                 true,
                 "Project deleted successfully",
