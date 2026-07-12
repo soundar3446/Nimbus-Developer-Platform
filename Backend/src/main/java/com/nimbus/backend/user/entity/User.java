@@ -1,6 +1,7 @@
 package com.nimbus.backend.user.entity;
 
 import com.nimbus.backend.common.entity.BaseEntity;
+import com.nimbus.backend.common.enums.UserRole;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -25,4 +26,7 @@ public class User extends BaseEntity {
 
     @Column(nullable = false, length = 255)
     private String password;
+
+    @Enumerated(EnumType.STRING)
+    private UserRole userRole;
 }
