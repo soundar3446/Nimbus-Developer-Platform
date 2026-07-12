@@ -5,8 +5,9 @@ import com.nimbus.backend.user.dto.UserResponse;
 import com.nimbus.backend.user.entity.User;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingConstants;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
 public interface UserMapper {
 
     @Mapping(target = "id", ignore = true)

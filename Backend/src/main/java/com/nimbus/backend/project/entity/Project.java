@@ -1,0 +1,62 @@
+package com.nimbus.backend.project.entity;
+
+import com.nimbus.backend.common.entity.BaseEntity;
+import com.nimbus.backend.project.enums.ProjectStatus;
+import com.nimbus.backend.user.entity.User;
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.Instant;
+import java.util.UUID;
+
+@Entity
+@Table(name = "projects")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Project extends BaseEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true, length = 36)
+    private String uuid;
+
+    @Column(nullable = false, length = 100)
+    private String name;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "github_repo")
+    private String githubRepo;
+
+    @Column(name = "default_branch", nullable = false)
+    private String defaultBranch;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner;
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private ProjectStatus status;
+
+    @PrePersist
+    protected void onCreate() {
+        if (this.uuid == null) {
+            this.uuid = UUID.randomUUID().toString();
+        }
+        if (this.defaultBranch == null) {
+            this.defaultBranch = "main";
+        }
+        if (this.status == null) {
+            this.status = ProjectStatus.CREATED;
+        }
+    }
+}

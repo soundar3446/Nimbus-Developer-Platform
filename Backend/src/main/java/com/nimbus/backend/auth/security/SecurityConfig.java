@@ -2,6 +2,7 @@ package com.nimbus.backend.auth.security;
 
 import com.nimbus.backend.auth.jwt.JwtAuthenticationEntryPoint;
 import com.nimbus.backend.auth.jwt.JwtAuthenticationFilter;
+import com.nimbus.backend.common.logging.ApiLoggingFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,6 +21,7 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private final ApiLoggingFilter apiLoggingFilter;
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final JwtAuthenticationEntryPoint jwtEntryPoint;
 
@@ -41,6 +43,7 @@ public class SecurityConfig {
 
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(jwtEntryPoint))
+                .addFilterBefore(apiLoggingFilter,org.springframework.security.web.context.request.async.WebAsyncManagerIntegrationFilter.class)
                 .addFilterBefore(jwtAuthFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
