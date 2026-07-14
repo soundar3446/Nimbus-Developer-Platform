@@ -14,11 +14,11 @@ public class DeploymentController {
     private final DeploymentService deploymentService;
 
     /**
-     * POST /api/deployments/{projectId}/clone
+     * POST /api/deployments/{projectUuid}/clone
      * Fires off the internal engine CI/CD build deployment thread lifecycle.
      */
-    @PostMapping("/{projectId}/clone")
-    public ResponseEntity<ApiResponse<String>> initializeDeployment(@PathVariable Long projectId) {
+    @PostMapping("/{projectUuid}/clone")
+    public ResponseEntity<ApiResponse<String>> initializeDeployment(@PathVariable("projectUuid") String projectId) {
         deploymentService.triggerDeploymentPipeline(projectId);
         return ResponseEntity.ok(new ApiResponse<>(
                 true,

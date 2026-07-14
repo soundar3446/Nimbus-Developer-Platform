@@ -56,11 +56,11 @@ public class ProjectController {
      * GET /api/projects/{id}
      * Retrieves a specific project by its ID (if owned by the calling user).
      */
-    @GetMapping("/{id}")
+    @GetMapping("/{uuid}")
     public ResponseEntity<ApiResponse<ProjectResponse>> getProjectById(
-            @PathVariable Long id) {
+            @PathVariable("uuid") String uuid) {
 
-        ProjectResponse response = projectService.getProjectById(id);
+        ProjectResponse response = projectService.getProjectById(uuid);
         ApiResponse<ProjectResponse> apiResponse = new ApiResponse<>(
                 true,
                 "Project retrieved successfully",
@@ -73,12 +73,12 @@ public class ProjectController {
      * PUT /api/projects/{id}
      * Updates an existing project's metadata by its ID.
      */
-    @PutMapping("/{id}")
+    @PutMapping("/{uuid}")
     public ResponseEntity<ApiResponse<ProjectResponse>> updateProject(
-            @PathVariable Long id,
+            @PathVariable("uuid") String uuid,
             @Valid @RequestBody ProjectRequest request) {
 
-        ProjectResponse response = projectService.updateProject(id, request);
+        ProjectResponse response = projectService.updateProject(uuid, request);
         ApiResponse<ProjectResponse> apiResponse = new ApiResponse<>(
                 true,
                 "Project updated successfully",
@@ -91,11 +91,11 @@ public class ProjectController {
      * DELETE /api/projects/{id}
      * Hard deletes an existing project resource from the database.
      */
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{uuid}")
     public ResponseEntity<ApiResponse<Void>> deleteProject(
-            @PathVariable Long id) {
+            @PathVariable("uuid") String uuid) {
 
-        projectService.deleteProject(id);
+        projectService.deleteProject(uuid);
         ApiResponse<Void> apiResponse = new ApiResponse<>(
                 true,
                 "Project deleted successfully",

@@ -47,15 +47,15 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional(readOnly = true)
-    public ProjectResponse getProjectById(Long id) {
-        Project project = getProjectAndValidateOwner(id);
+    public ProjectResponse getProjectById(String uuid) {
+        Project project = getProjectAndValidateOwner(uuid);
         return projectMapper.toResponse(project);
     }
 
     @Override
     @Transactional
-    public ProjectResponse updateProject(Long id, ProjectRequest request) {
-        Project project = getProjectAndValidateOwner(id);
+    public ProjectResponse updateProject(String uuid, ProjectRequest request) {
+        Project project = getProjectAndValidateOwner(uuid);
 
         project.setName(request.getName());
         project.setDescription(request.getDescription());
@@ -67,14 +67,14 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public void deleteProject(Long id) {
-        Project project = getProjectAndValidateOwner(id);
+    public void deleteProject(String uuid) {
+        Project project = getProjectAndValidateOwner(uuid);
         projectRepository.delete(project);
     }
 
-    private Project getProjectAndValidateOwner(Long id) {
-        Project project = projectRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Project not found with id: " + id));
+    private Project getProjectAndValidateOwner(String uuid) {
+        Project project = projectRepository.findByUuid(uuid)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found with id: " + uuid));
 
         String currentEmail = currentUserService.getCurrentUserEmail();
         if (!project.getOwner().getEmail().equals(currentEmail)) {

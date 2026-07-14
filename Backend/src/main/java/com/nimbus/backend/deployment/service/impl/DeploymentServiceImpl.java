@@ -29,8 +29,11 @@ public class DeploymentServiceImpl implements DeploymentService {
 
     @Override
     @Async("taskExecutor") // 🔥 Runs asynchronously so the REST API returns immediately
-    public void triggerDeploymentPipeline(Long projectId) {
-        Project project = projectRepository.findById(projectId)
+    public void triggerDeploymentPipeline(String projectId) {
+
+        log.info("Running on thread: {}", Thread.currentThread().getName());
+
+        Project project = projectRepository.findByUuid(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project target not found"));
 
         // Initialize tracking record
@@ -42,6 +45,10 @@ public class DeploymentServiceImpl implements DeploymentService {
 
         File workspace = null;
         try {
+
+            if(project.getOwner().getGithubIntegration() == null){
+                throw new IllegalStateException("Project Owner does not have active GitHub Integration");
+            }
             // STEP 1: Git Clone
             String token = project.getOwner().getGithubIntegration().getGithubAccessToken();
             workspace = gitService.cloneRepository(project.getGithubRepo(), token, project.getDefaultBranch());
