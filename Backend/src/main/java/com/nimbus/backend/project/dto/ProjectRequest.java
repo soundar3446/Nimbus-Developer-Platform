@@ -22,4 +22,8 @@ public class ProjectRequest {
     @Builder.Default
     private String defaultBranch = "main";
 
+    private String dockerfilePath;
+
+    private String contextPath;
+
 }

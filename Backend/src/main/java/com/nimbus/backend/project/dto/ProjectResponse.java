@@ -22,4 +22,6 @@ public class ProjectResponse {
     private ProjectStatus status;
     private Instant createdAt;
     private Instant updatedAt;
+    private String dockerfilePath;
+    private String contextPath;
 }
