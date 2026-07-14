@@ -15,7 +15,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStreamReader;
 
 @Slf4j
 @Service
@@ -49,44 +51,85 @@ public class DeploymentServiceImpl implements DeploymentService {
             if(project.getOwner().getGithubIntegration() == null){
                 throw new IllegalStateException("Project Owner does not have active GitHub Integration");
             }
-            // STEP 1: Git Clone
+
             String token = project.getOwner().getGithubIntegration().getGithubAccessToken();
             workspace = gitService.cloneRepository(project.getGithubRepo(), token, project.getDefaultBranch());
 
-            // STEP 2: Detect Project Type
-            deployment.setStatus(DeploymentStatus.DETECTING);
+            String dfRelativePath = (project.getDockerfilePath() != null && !project.getDockerfilePath().isBlank())
+                    ? project.getDockerfilePath() : "Dockerfile";
+            String contextRelativePath = (project.getContextPath() != null && !project.getContextPath().isBlank())
+                    ? project.getContextPath() : ".";
+
+            File absoluteDockerfile = new File(workspace, dfRelativePath);
+            File absoluteBuildContext = new File(workspace, contextRelativePath);
+
+
+            if (!absoluteDockerfile.exists() || !absoluteDockerfile.isFile()) {
+                throw new IllegalArgumentException("Declared Dockerfile not found at workspace location path: " + dfRelativePath);
+            }
+            if (!absoluteBuildContext.exists() || !absoluteBuildContext.isDirectory()) {
+                throw new IllegalArgumentException("Declared Build Context directory path not found: " + contextRelativePath);
+            }
+
+            String targetImage = "nimbus-registry.local/apps/" + projectId + ":latest";
+
+            log.info("🐳 Running user-configured docker build...");
+            log.info("   ↳ Dockerfile: {}", absoluteDockerfile.getAbsolutePath());
+            log.info("   ↳ Context:    {}", absoluteBuildContext.getAbsolutePath());
+
+            deployment.setStatus(DeploymentStatus.BUILDING);
             deploymentRepository.save(deployment);
+
+            executeSystemCommand(
+                    absoluteBuildContext, // Run the command *inside* the user's designated context directory
+                    "docker", "build",
+                    "-f", absoluteDockerfile.getAbsolutePath(),
+                    "-t", targetImage,
+                    "."
+            );
+
+            deployment.setStatus(DeploymentStatus.SUCCESSFUL);
+            deploymentRepository.save(deployment);
+            log.info("🎉 User application container successfully compiled: {}", targetImage);
 
             ProjectType detectedType = detectorService.detectType(workspace);
             log.info("Project ID {} auto-detected framework type: {}", projectId, detectedType);
 
-            if (detectedType == ProjectType.UNKNOWN) {
-                throw new IllegalArgumentException("Unsupported or unidentifiable project stack footprint configuration.");
-            }
-
-            // [Steps 3-6 will build sequentially from here]
-            deployment.setStatus(DeploymentStatus.SUCCESSFUL);
-            deploymentRepository.save(deployment);
-
         } catch (Exception e) {
-            log.error("Deployment failure on Project ID: {}", projectId, e);
+            log.error("💥 Docker engine compilation failed on project UUID: {}", projectId, e);
             deployment.setStatus(DeploymentStatus.FAILED);
             deploymentRepository.save(deployment);
         } finally {
-            // Housekeeping: delete local workspace directory to protect server storage space
             if (workspace != null && workspace.exists()) {
                 deleteDirectory(workspace);
             }
         }
     }
+    private void executeSystemCommand(File workingDir, String... command) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(workingDir);
+        pb.redirectErrorStream(true);
 
-    private void deleteDirectory(File file) {
-        File[] contents = file.listFiles();
-        if (contents != null) {
-            for (File f : contents) {
-                deleteDirectory(f);
+        Process process = pb.start();
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                log.info("[DOCKER-BUILD] {}", line);
             }
         }
-        file.delete();
+
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("Docker compilation process failed with code: " + exitCode);
+        }
+    }
+
+    private void deleteDirectory(File path) {
+        File[] files = path.listFiles();
+        if (files != null) {
+            for (File f : files) deleteDirectory(f);
+        }
+        path.delete();
     }
 }

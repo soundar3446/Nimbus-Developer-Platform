@@ -47,6 +47,12 @@ public class Project extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private ProjectStatus status;
 
+    @Column(name = "dockerfile_path", nullable = false, length = 512)
+    private String dockerfilePath;
+
+    @Column(name = "context_path", nullable = false, length = 512)
+    private String contextPath;
+
     @PrePersist
     protected void onCreate() {
         if (this.uuid == null) {
