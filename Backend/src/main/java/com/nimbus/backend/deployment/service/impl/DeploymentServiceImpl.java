@@ -3,11 +3,9 @@ package com.nimbus.backend.deployment.service.impl;
 import com.nimbus.backend.common.exception.ResourceNotFoundException;
 import com.nimbus.backend.deployment.entity.Deployment;
 import com.nimbus.backend.deployment.enums.DeploymentStatus;
-import com.nimbus.backend.deployment.enums.ProjectType;
 import com.nimbus.backend.deployment.repository.DeploymentRepository;
 import com.nimbus.backend.deployment.service.DeploymentService;
 import com.nimbus.backend.deployment.service.GitService;
-import com.nimbus.backend.deployment.service.ProjectDetectorService;
 import com.nimbus.backend.project.entity.Project;
 import com.nimbus.backend.project.repository.ProjectRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +25,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     private final ProjectRepository projectRepository;
     private final DeploymentRepository deploymentRepository;
     private final GitService gitService;
-    private final ProjectDetectorService detectorService;
 
     @Override
     @Async("taskExecutor") // 🔥 Runs asynchronously so the REST API returns immediately
@@ -91,9 +88,6 @@ public class DeploymentServiceImpl implements DeploymentService {
             deployment.setStatus(DeploymentStatus.SUCCESSFUL);
             deploymentRepository.save(deployment);
             log.info("🎉 User application container successfully compiled: {}", targetImage);
-
-            ProjectType detectedType = detectorService.detectType(workspace);
-            log.info("Project ID {} auto-detected framework type: {}", projectId, detectedType);
 
         } catch (Exception e) {
             log.error("💥 Docker engine compilation failed on project UUID: {}", projectId, e);
