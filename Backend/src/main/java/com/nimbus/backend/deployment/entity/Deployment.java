@@ -30,4 +30,16 @@ public class Deployment extends BaseEntity {
     @Column(name = "git_commit_hash")
     private String gitCommitHash;
 
+    @Column(name = "container_id", length = 64)
+    private String containerId;
+
+    @Column(name = "container_name", length = 255)
+    private String containerName;
+
+    @Column(name = "host_port")
+    private Integer hostPort;
+
+    @Column(name = "application_url", length = 512)
+    private String applicationUrl;
+
 }

@@ -75,8 +75,8 @@ public class ProjectController {
      */
     @PutMapping("/{uuid}")
     public ResponseEntity<ApiResponse<ProjectResponse>> updateProject(
-            @PathVariable("uuid") String uuid,
-            @Valid @RequestBody ProjectRequest request) {
+            @Valid @RequestBody ProjectRequest request,
+            @PathVariable("uuid") String uuid) {
 
         ProjectResponse response = projectService.updateProject(uuid, request);
         ApiResponse<ProjectResponse> apiResponse = new ApiResponse<>(

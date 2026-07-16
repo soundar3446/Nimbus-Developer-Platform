@@ -27,10 +27,8 @@ services:
         - postgres
       ports:
         - "8080:8080"
-      environment:
-        SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nimbus
-        SPRING_DATASOURCE_USERNAME: postgres
-        SPRING_DATASOURCE_PASSWORD: postgres
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
       restart: always
       env_file:
         - config.env
