@@ -68,7 +68,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                 throw new IllegalArgumentException("Declared Build Context directory path not found: " + contextRelativePath);
             }
 
-            String targetImage = "nimbus-registry.local/apps/" + projectId + ":latest";
+            String targetImage = project.getImageName() + ":latest";
 
             log.info("🐳 Running user-configured docker build...");
             log.info("   ↳ Dockerfile: {}", absoluteDockerfile.getAbsolutePath());

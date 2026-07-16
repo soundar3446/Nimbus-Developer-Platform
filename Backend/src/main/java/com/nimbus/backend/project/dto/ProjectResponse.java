@@ -24,4 +24,5 @@ public class ProjectResponse {
     private Instant updatedAt;
     private String dockerfilePath;
     private String contextPath;
+    private String imageName;
 }

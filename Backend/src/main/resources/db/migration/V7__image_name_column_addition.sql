@@ -1,0 +1,1 @@
+ALTER TABLE projects ADD COLUMN image_name VARCHAR(255);

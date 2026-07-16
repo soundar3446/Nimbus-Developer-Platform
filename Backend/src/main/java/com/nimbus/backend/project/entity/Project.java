@@ -53,6 +53,9 @@ public class Project extends BaseEntity {
     @Column(name = "context_path", nullable = false, length = 512)
     private String contextPath;
 
+    @Column(name = "image_name", length = 255)
+    private String imageName;
+
     @PrePersist
     protected void onCreate() {
         if (this.uuid == null) {
@@ -64,5 +67,6 @@ public class Project extends BaseEntity {
         if (this.status == null) {
             this.status = ProjectStatus.CREATED;
         }
+
     }
 }

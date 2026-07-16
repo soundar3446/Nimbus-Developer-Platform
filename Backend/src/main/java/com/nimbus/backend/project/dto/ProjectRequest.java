@@ -22,8 +22,13 @@ public class ProjectRequest {
     @Builder.Default
     private String defaultBranch = "main";
 
+    @NotBlank(message = "DockerFile path is empty.")
     private String dockerfilePath;
 
+    @NotBlank(message = "Build context path is empty.")
     private String contextPath;
+
+    @NotBlank(message = "Image name must not be empty.")
+    private String imageName;
 
 }

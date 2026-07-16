@@ -5,10 +5,6 @@ import com.nimbus.backend.deployment.enums.DeploymentStatus;
 import com.nimbus.backend.project.entity.Project;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
-import java.time.Instant;
 
 @Entity
 @Table(name = "deployments")
