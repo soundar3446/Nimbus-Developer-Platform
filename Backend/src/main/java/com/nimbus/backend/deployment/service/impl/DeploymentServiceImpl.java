@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -140,6 +141,88 @@ public class DeploymentServiceImpl implements DeploymentService {
             }
         }
     }
+
+    @Override
+    @Transactional
+    public void stopDeployment(Long deploymentId) {
+        Deployment deployment = deploymentRepository.findById(deploymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
+
+        if (deployment.getContainerName() != null) {
+            log.info("Stopping container: {}", deployment.getContainerName());
+            dockerService.stopAndRemoveContainer(deployment.getContainerName());
+        }
+
+        deployment.setStatus(DeploymentStatus.STOPPED);
+        deploymentRepository.save(deployment);
+    }
+
+    @Override
+    @Transactional
+    public void restartDeployment(Long deploymentId) {
+        Deployment deployment = deploymentRepository.findById(deploymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
+
+        if (deployment.getContainerName() == null) {
+            throw new IllegalStateException("Cannot restart a deployment that has no active container footprint");
+        }
+
+        try {
+            log.info("Restarting container: {}", deployment.getContainerName());
+            ProcessBuilder pb = new ProcessBuilder("docker", "restart", deployment.getContainerName());
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+
+            if (exitCode != 0) {
+                throw new RuntimeException("Docker daemon failed to execute restart sequence command context");
+            }
+
+            // Verify the runtime is still healthy following the bounce transition
+            boolean isHealthy = dockerService.pollHealthCheck(deployment.getApplicationUrl(), 5, 2000);
+            if (isHealthy) {
+                deployment.setStatus(DeploymentStatus.RUNNING);
+            } else {
+                deployment.setStatus(DeploymentStatus.FAILED);
+            }
+            deploymentRepository.save(deployment);
+
+        } catch (Exception e) {
+            log.error("Failed executing restart command lifecycle", e);
+            throw new RuntimeException("Container runtime restart failure", e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getDeploymentLogs(Long deploymentId) {
+        Deployment deployment = deploymentRepository.findById(deploymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
+
+        if (deployment.getContainerName() == null) {
+            return "No execution runtime environment active for this deployment history log constraint.";
+        }
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder("docker", "logs", "--tail", "500", deployment.getContainerName());
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            StringBuilder logBuffer = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    logBuffer.append(line).append("\n");
+                }
+            }
+            process.waitFor();
+            return logBuffer.toString();
+
+        } catch (Exception e) {
+            log.error("Failed fetching live stream buffer maps from container process block", e);
+            return "Infrastructure error occurred while attempting to parse execution logging context loops.";
+        }
+    }
+
     private void executeSystemCommand(File workingDir, String... command) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(workingDir);
