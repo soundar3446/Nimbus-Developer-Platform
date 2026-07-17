@@ -1,6 +1,7 @@
 package com.nimbus.backend.deployment.controller;
 
 import com.nimbus.backend.common.dto.ApiResponse;
+import com.nimbus.backend.deployment.enums.DeploymentStatus;
 import com.nimbus.backend.deployment.service.DeploymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +27,20 @@ public class DeploymentController {
                 true,
                 "Deployment runner pipeline engine initialized successfully.",
                 "Asynchronous context engine processing active."
+        ));
+    }
+
+    /**
+     * POST /api/deployments/{id}/start
+     * Re-spins up a stopped container using its existing compiled image layout.
+     */
+    @PostMapping("/{id}/start")
+    public ResponseEntity<ApiResponse<Void>> startDeployment(@PathVariable("id") Long id) {
+        deploymentService.startDeployment(id);
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                "Application runtime environment started successfully.",
+                null
         ));
     }
 
@@ -70,4 +85,18 @@ public class DeploymentController {
                 logs
         ));
     }
+
+        /**
+         * GET /api/deployments/{id}/status
+         * Returns the exact tracking state metrics footprint of the targeting configuration ID.
+         */
+        @GetMapping("/{id}/status")
+        public ResponseEntity<ApiResponse<DeploymentStatus>> getDeploymentStatus(@PathVariable("id") Long id) {
+            DeploymentStatus status = deploymentService.getDeploymentStatus(id);
+            return ResponseEntity.ok(new ApiResponse<>(
+                    true,
+                    "Deployment status footprint retrieved successfully.",
+                    status
+            ));
+        }
 }

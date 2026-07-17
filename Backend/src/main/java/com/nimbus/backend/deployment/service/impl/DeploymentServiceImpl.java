@@ -144,6 +144,57 @@ public class DeploymentServiceImpl implements DeploymentService {
 
     @Override
     @Transactional
+    public void startDeployment(Long id) {
+        Deployment deployment = deploymentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment target not found for ID: " + id));
+
+        if (deployment.getStatus() == DeploymentStatus.RUNNING) {
+            throw new IllegalStateException("Application deployment context is already active and running.");
+        }
+
+        try {
+            log.info("Starting existing container layout: {}", deployment.getContainerName());
+
+            // Re-fire the container using standard docker execution commands
+            ProcessBuilder pb = new ProcessBuilder("docker", "start", deployment.getContainerName());
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+
+            // If the container was purged or missing, spin it up fresh using the existing properties
+            if (exitCode != 0) {
+                log.warn("Container footprint missing. Re-instantiating fresh container runtime layout.");
+                String longContainerId = dockerService.runContainer(
+                        deployment.getContainerName(),
+                        deployment.getHostPort(),
+                        8080, // Target exposed application port
+                        deployment.getProject().getImageName()
+                );
+                deployment.setContainerId(longContainerId);
+            }
+
+            deployment.setStatus(DeploymentStatus.HEALTH_CHECK);
+            deploymentRepository.save(deployment);
+
+            // Verify the restarted app is listening before marking it active
+            boolean isHealthy = dockerService.pollHealthCheck(deployment.getApplicationUrl(), 5, 2000);
+            if (isHealthy) {
+                log.info("Application successfully back online at URL: {}", deployment.getApplicationUrl());
+                deployment.setStatus(DeploymentStatus.RUNNING);
+            } else {
+                deployment.setStatus(DeploymentStatus.FAILED);
+            }
+            deploymentRepository.save(deployment);
+
+        } catch (Exception e) {
+            log.error("Failed to execute infrastructure start sequence for ID: {}", id, e);
+            deployment.setStatus(DeploymentStatus.FAILED);
+            deploymentRepository.save(deployment);
+            throw new RuntimeException("Infrastructure start action failure", e);
+        }
+    }
+
+    @Override
+    @Transactional
     public void stopDeployment(Long deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
@@ -221,6 +272,14 @@ public class DeploymentServiceImpl implements DeploymentService {
             log.error("Failed fetching live stream buffer maps from container process block", e);
             return "Infrastructure error occurred while attempting to parse execution logging context loops.";
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DeploymentStatus getDeploymentStatus(Long id) {
+        return deploymentRepository.findById(id)
+                .map(Deployment::getStatus)
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment target not found for ID: " + id));
     }
 
     private void executeSystemCommand(File workingDir, String... command) throws Exception {
