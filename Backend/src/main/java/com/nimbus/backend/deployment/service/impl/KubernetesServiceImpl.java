@@ -1,6 +1,7 @@
 package com.nimbus.backend.deployment.service.impl;
 
 import com.nimbus.backend.deployment.service.KubernetesService;
+import io.kubernetes.client.custom.IntOrString;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.*;
@@ -83,4 +84,38 @@ public class KubernetesServiceImpl implements KubernetesService {
         }
         return false;
     }
+
+  public V1Service createClusterIPService(String deploymentName, int targetPort) throws Exception {
+        log.info("Generating ClusterIP Service definition for app target: {}", deploymentName);
+
+        V1Service service = new V1Service();
+        service.setApiVersion("v1");
+        service.setKind("Service");
+
+        // 1. Configure standard metadata block
+        V1ObjectMeta metadata = new V1ObjectMeta();
+        metadata.setName(deploymentName);
+        metadata.setLabels(Map.of("app", deploymentName));
+        service.setMetadata(metadata);
+
+        // 2. Configure network selector specifications
+        V1ServiceSpec spec = new V1ServiceSpec();
+        spec.setType("ClusterIP");
+        spec.setSelector(Map.of("app", deploymentName));
+
+        // 3. Define the routing target port footprint
+        V1ServicePort port = new V1ServicePort();
+        port.setPort(80);
+        port.setTargetPort(new IntOrString(targetPort));
+        spec.setPorts(Collections.singletonList(port));
+        
+        service.setSpec(spec);
+
+        // 4. Dispatch transaction payload directly to control plane
+        V1Service deployedService = coreV1Api.createNamespacedService("default", service).execute();
+
+        log.info("Service successfully instantiated. Internal DNS: {}.default.svc.cluster.local", deploymentName);
+        return deployedService;
+    }
+
 }

@@ -1,59 +1,77 @@
 package com.nimbus.backend.config;
 
+import io.kubernetes.client.openapi.ApiClient;
+import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
-import io.kubernetes.client.openapi.models.*;
-import lombok.RequiredArgsConstructor;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.util.Config;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import org.springframework.context.annotation.Bean;
 
-import java.util.Collections;
-import java.util.Map;
+import java.io.File;
 
 @Slf4j
-@Service
-@RequiredArgsConstructor
+@org.springframework.context.annotation.Configuration
 public class KubernetesConfig {
-    private final AppsV1Api appsV1Api;
 
-    public V1Deployment deployApplication(String deploymentName, String imageName, int targetExposedPort) throws Exception {
-        String namespace = "default";
-        Map<String, String> labels = Map.of("app", deploymentName);
+    @Bean
+    public ApiClient apiClient() {
+        ApiClient client;
 
-        // 1. Define the Container Specifications
-        V1Container container = new V1Container()
-                .name(deploymentName + "-container")
-                .image(imageName)
-                .imagePullPolicy("IfNotPresent") // Useful for using local daemon images during Phase 1 testing
-                .ports(Collections.singletonList(new V1ContainerPort().containerPort(targetExposedPort)));
+        File serviceAccountPath = new File("/var/run/secrets/kubernetes.io/serviceaccount");
 
-        // 2. Define the Pod Spec Template
-        V1PodTemplateSpec templateSpec = new V1PodTemplateSpec()
-                .metadata(new V1ObjectMeta().labels(labels))
-                .spec(new V1PodSpec().containers(Collections.singletonList(container)));
+        if (serviceAccountPath.exists()) {
+            log.info("Production Mode: Detecting in-cluster service account token mapping footprints.");
+            try {
+                client = Config.fromCluster();
+            } catch (Exception e) {
+                log.error("Failed to load in-cluster configuration, parsing default fallback", e);
+                client = new ApiClient();
+            }
+        } else {
+            log.info("Development Mode: Parsing mounted local kubeconfig file...");
+            try {
+                client = Config.defaultClient();
+                String originalPath = client.getBasePath();
+                log.info("Initialized cluster API server path target: {}", originalPath);
 
-        // 3. Define the Deployment Spec (Selector configuration, Replicas matchers)
-        V1DeploymentSpec deploymentSpec = new V1DeploymentSpec()
-                .replicas(1) // Keep it at a steady baseline single replica instance for now
-                .selector(new V1LabelSelector().matchLabels(labels))
-                .template(templateSpec);
+                if (originalPath.contains("localhost") || originalPath.contains("127.0.0.1")) {
+                    String updatedPath = originalPath
+                            .replace("localhost", "host.docker.internal")
+                            .replace("127.0.0.1", "host.docker.internal");
+                    
+                    client.setBasePath(updatedPath);
+                    client.setVerifyingSsl(false);
+                    log.info("Successfully patched networking path loop to host destination: {}", updatedPath);
+                }
+            } catch (Exception e) {
+                log.error("CRITICAL: Failed to parse mounted kubeconfig file. Reason: ", e);
+                // Hard fallback to force it away from 8080 if file system reading fails
+                client = new ApiClient();
+                client.setBasePath("https://host.docker.internal:6443");
+                client.setVerifyingSsl(false);
+            }
+        }
 
-        // 4. Assemble the Root V1Deployment Object Manifest
-        V1Deployment manifest = new V1Deployment()
-                .apiVersion("apps/v1")
-                .kind("Deployment")
-                .metadata(new V1ObjectMeta().name(deploymentName).labels(labels))
-                .spec(deploymentSpec);
+        // Disable strict JSON validation to handle newer cluster versions gracefully
+        if (client.getJSON() != null) {
+            client.getJSON().setLenientOnJson(true);
+        }
 
-        log.info("Sending compiled manifest footprint to cluster engine: {}", deploymentName);
+         log.debug("Kubernetes API Base URL: {}", client.getBasePath());
+         log.debug("Authentication methods: {}", client.getAuthentications().keySet());
 
-        // 5. Fire SDK network request straight into the cluster API plane
-        return appsV1Api.createNamespacedDeployment(
-                namespace,
-                manifest
-                // pretty
-                // dryRun
-                // fieldManager
-                // fieldValidation
-        ).execute();
+        Configuration.setDefaultApiClient(client);
+        return client;
+    }
+
+    @Bean
+    public AppsV1Api appsV1Api(ApiClient apiClient) {
+        return new AppsV1Api(apiClient);
+    }
+
+    @Bean
+    public CoreV1Api coreV1Api(ApiClient apiClient) {
+        return new CoreV1Api(apiClient);
     }
 }

@@ -63,6 +63,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.setDefaultBranch(request.getDefaultBranch());
         project.setDockerfilePath(request.getDockerfilePath());
         project.setContextPath(request.getContextPath());
+        project.setImageName(request.getImageName());
 
         return projectMapper.toResponse(projectRepository.save(project));
     }

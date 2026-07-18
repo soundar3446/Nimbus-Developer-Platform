@@ -46,7 +46,7 @@ public class DockerServiceImpl implements DockerService {
         try {
             executeSilentCommand("docker", "stop", containerName);
             executeSilentCommand("docker", "rm", containerName);
-            log.info("🗑️ Context container resources purged successfully: {}", containerName);
+            log.info("Context container resources purged successfully: {}", containerName);
         } catch (Exception e) {
             log.warn("Non-fatal cleanup exception clearing container environment context", e);
         }

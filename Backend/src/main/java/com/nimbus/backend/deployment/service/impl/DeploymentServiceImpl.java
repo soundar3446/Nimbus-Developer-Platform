@@ -26,12 +26,12 @@ public class DeploymentServiceImpl implements DeploymentService {
     private final ProjectRepository projectRepository;
     private final DeploymentRepository deploymentRepository;
     private final GitService gitService;
-    private final PortAllocatorService portAllocatorService;
     private final DockerService dockerService;
     private final KubernetesService kubernetesService;
+    private final DeploymentTrackingEngine deploymentTrackingEngine;
 
     @Override
-    @Async("taskExecutor") // 🔥 Runs asynchronously so the REST API returns immediately
+    @Async("taskExecutor") // Runs asynchronously so the REST API returns immediately
     public void triggerDeploymentPipeline(String projectId) {
 
         log.info("Running on thread: {}", Thread.currentThread().getName());
@@ -97,15 +97,19 @@ public class DeploymentServiceImpl implements DeploymentService {
             deploymentRepository.save(deployment);
 
             k8sDeploymentName = "nimbus-" + deployment.getId();
+            int targetPort = 8080;
 
             log.info("Orchestrating Kubernetes Deployment object: {}", k8sDeploymentName);
-            kubernetesService.deployApplication(k8sDeploymentName, targetImage, 8080);
+            kubernetesService.deployApplication(k8sDeploymentName, targetImage, targetPort);
+
+            log.info("Orchestrating Kubernetes Service object: {}", k8sDeploymentName);
+            kubernetesService.createClusterIPService(k8sDeploymentName, targetPort);
 
             deployment.setStatus(DeploymentStatus.HEALTH_CHECK);
             deployment.setContainerName(k8sDeploymentName);
             deploymentRepository.save(deployment);
-            boolean isHealthy = kubernetesService.verifyPodIsRunning(k8sDeploymentName, 15, 3000);
 
+            boolean isHealthy = kubernetesService.verifyPodIsRunning(k8sDeploymentName, 15, 3000);
             if (isHealthy) {
                 log.info("Pod successfully scheduled and running in cluster! Promoting deployment status.");
                 deployment.setStatus(DeploymentStatus.RUNNING);
@@ -119,7 +123,7 @@ public class DeploymentServiceImpl implements DeploymentService {
             projectRepository.save(project);
 
         } catch (Exception e) {
-            log.error("💥 Kubernetes engine deployment tracking layer failed on project UUID: {}", projectId, e);
+            log.error("Kubernetes engine deployment tracking layer failed on project UUID: {}", projectId, e);
             deployment.setStatus(DeploymentStatus.FAILED);
             deploymentRepository.save(deployment);
         } finally {

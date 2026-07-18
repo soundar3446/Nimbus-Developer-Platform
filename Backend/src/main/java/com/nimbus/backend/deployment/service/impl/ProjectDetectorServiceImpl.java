@@ -19,7 +19,7 @@
 //        }
 //
 //        String[] rootFiles = workspaceRoot.list();
-//        log.info("📁 Root directory contents found: {}", Arrays.toString(rootFiles));
+//        log.info("Root directory contents found: {}", Arrays.toString(rootFiles));
 //
 //        // Search recursively up to 3 levels deep
 //        return searchForIndicator(workspaceRoot, 0, 3);

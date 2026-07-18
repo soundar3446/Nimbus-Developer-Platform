@@ -153,7 +153,7 @@
 		<dependency>
 			<groupId>io.kubernetes</groupId>
 			<artifactId>client-java</artifactId>
-			<version>21.0.0</version> <!-- Use the latest stable version matching Java 21 -->
+			<version>27.0.0</version>
 		</dependency>
 	</dependencies>
 
