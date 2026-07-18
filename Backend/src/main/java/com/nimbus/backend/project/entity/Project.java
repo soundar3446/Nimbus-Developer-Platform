@@ -5,10 +5,11 @@ import com.nimbus.backend.project.enums.ProjectStatus;
 import com.nimbus.backend.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -55,6 +56,11 @@ public class Project extends BaseEntity {
 
     @Column(name = "image_name", length = 255)
     private String imageName;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "environment_variables", columnDefinition = "jsonb")
+    @Builder.Default
+    private Map<String, String> environmentVariables = new HashMap<>();
 
     @PrePersist
     protected void onCreate() {

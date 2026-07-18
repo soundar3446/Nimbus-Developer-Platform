@@ -4,6 +4,8 @@ import com.nimbus.backend.project.enums.ProjectStatus;
 import lombok.*;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -25,4 +27,5 @@ public class ProjectResponse {
     private String dockerfilePath;
     private String contextPath;
     private String imageName;
+    private Map<String, String> environmentVariables = new HashMap<>();
 }

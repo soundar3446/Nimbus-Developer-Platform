@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -107,9 +109,10 @@ public class DeploymentServiceImpl implements DeploymentService {
 
             k8sDeploymentName = "nimbus-" + deployment.getId();
             int targetPort = 8080;
+            Map<String, String> envVars = project.getEnvironmentVariables();
 
             log.info("Orchestrating Kubernetes Deployment object: {}", k8sDeploymentName);
-            kubernetesService.deployApplication(k8sDeploymentName, targetImage, targetPort);
+            kubernetesService.deployApplication(k8sDeploymentName, targetImage, targetPort, envVars);
 
             log.info("Orchestrating Kubernetes Service object: {}", k8sDeploymentName);
             kubernetesService.createClusterIPService(k8sDeploymentName, targetPort);
@@ -179,8 +182,9 @@ public class DeploymentServiceImpl implements DeploymentService {
                     log.warn("Kubernetes deployment footprint missing from cluster engine. Re-instantiating fresh container runtime layout.");
                     int targetPort = 8080;
                     String targetImage = deployment.getImageTag();
+                    Map<String, String> envVars = deployment.getProject().getEnvironmentVariables();
 
-                    kubernetesService.deployApplication(k8sDeploymentName, targetImage, targetPort);
+                    kubernetesService.deployApplication(k8sDeploymentName, targetImage, targetPort, envVars);
                     kubernetesService.createClusterIPService(k8sDeploymentName, targetPort);
                     kubernetesService.createApplicationIngress(k8sDeploymentName);
                 } else {
@@ -329,6 +333,92 @@ public class DeploymentServiceImpl implements DeploymentService {
         return deploymentRepository.findById(id)
                 .map(Deployment::getStatus)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment target not found for ID: " + id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Deployment> getProjectDeploymentHistory(String projectUuid) {
+        Project project = projectRepository.findByUuid(projectUuid)
+                .orElseThrow(() -> new ResourceNotFoundException("Project target not found for UUID: " + projectUuid));
+
+        return deploymentRepository.findByProjectIdOrderByIdDesc(project.getId());
+    }
+
+    @Override
+    @Transactional
+    public Deployment rollbackDeployment(Long deploymentId) {
+        long startTime = System.currentTimeMillis();
+
+        Deployment historicalTarget = deploymentRepository.findById(deploymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Historical deployment record not found for ID: " + deploymentId));
+
+        if (historicalTarget.getImageTag() == null) {
+            throw new IllegalStateException("Target deployment cannot be used for rollback as it lacks a valid compiled image tag.");
+        }
+
+        Project project = historicalTarget.getProject();
+        String k8sDeploymentName = "nimbus-" + historicalTarget.getId();
+
+        log.info("Initiating historical rollback recovery sequence to image version: [ {} ]", historicalTarget.getImageTag());
+
+        Deployment rollbackAudit = Deployment.builder()
+                .project(project)
+                .status(DeploymentStatus.STARTING_CONTAINER)
+                .imageTag(historicalTarget.getImageTag())
+                .gitCommitHash(historicalTarget.getGitCommitHash() != null ? historicalTarget.getGitCommitHash() : "Rollback Source")
+                .containerName(historicalTarget.getContainerName())
+                .applicationUrl(historicalTarget.getApplicationUrl())
+                .hostPort(historicalTarget.getHostPort())
+                .build();
+        rollbackAudit = deploymentRepository.save(rollbackAudit);
+
+        try {
+
+            Map<String, String> currentEnvVars = project.getEnvironmentVariables();
+            int targetPort = 8080;
+
+            java.util.Optional<io.kubernetes.client.openapi.models.V1Deployment> deploymentOpt =
+                    kubernetesService.getDeployment(historicalTarget.getContainerName());
+
+            if (deploymentOpt.isEmpty()) {
+                log.warn("Active cluster workload structure missing during rollback. Performing full manifest reconstruction.");
+                kubernetesService.deployApplication(historicalTarget.getContainerName(), historicalTarget.getImageTag(), targetPort, currentEnvVars);
+                kubernetesService.createClusterIPService(historicalTarget.getContainerName(), targetPort);
+                kubernetesService.createApplicationIngress(historicalTarget.getContainerName());
+            } else {
+                log.info("Active workload footprint found. Updating live pod template image context to target rollback version.");
+                // We'll leverage a new helper method in our Kubernetes service layer to update the image tag inline
+                kubernetesService.updateDeploymentImage(historicalTarget.getContainerName(), historicalTarget.getImageTag(), currentEnvVars);
+            }
+
+            rollbackAudit.setStatus(DeploymentStatus.HEALTH_CHECK);
+            deploymentRepository.save(rollbackAudit);
+
+            // 5. Block and poll tracking metrics until cluster replica saturation completes successfully
+            int timeoutSeconds = 180;
+            boolean isHealthy = deploymentTrackingEngine.waitUntilDeploymentReady(historicalTarget.getContainerName(), timeoutSeconds);
+
+            rollbackAudit.setDurationMs(System.currentTimeMillis() - startTime);
+
+            if (isHealthy) {
+                log.info("Rollback recovery finalized successfully. Application version is fully active.");
+                rollbackAudit.setStatus(DeploymentStatus.RUNNING);
+                project.setStatus(ProjectStatus.CONNECTED);
+            } else {
+                log.error("Rollback recovery failed to reach stable cluster running limits within threshold windows.");
+                rollbackAudit.setStatus(DeploymentStatus.FAILED);
+            }
+
+            projectRepository.save(project);
+            return deploymentRepository.save(rollbackAudit);
+
+        } catch (Exception e) {
+            log.error("Systemic error encountered executing cluster rollback routine for historical target ID: {}", deploymentId, e);
+            rollbackAudit.setStatus(DeploymentStatus.FAILED);
+            rollbackAudit.setDurationMs(System.currentTimeMillis() - startTime);
+            deploymentRepository.save(rollbackAudit);
+            throw new RuntimeException("Platform rollback recovery action failure", e);
+        }
     }
 
     private void executeSystemCommand(File workingDir, String... command) throws Exception {

@@ -25,7 +25,7 @@ public class KubernetesServiceImpl implements KubernetesService {
     private final NetworkingV1Api networkingV1Api;
 
     @Override
-    public V1Deployment deployApplication(String deploymentName, String imageName, int targetExposedPort) throws Exception {
+    public V1Deployment deployApplication(String deploymentName, String imageName, int targetExposedPort, Map<String, String> envVariables) throws Exception {
         String namespace = "default";
         Map<String, String> labels = Map.of("app", deploymentName);
 
@@ -34,6 +34,15 @@ public class KubernetesServiceImpl implements KubernetesService {
                 .image(imageName)
                 .imagePullPolicy("IfNotPresent")
                 .ports(Collections.singletonList(new V1ContainerPort().containerPort(targetExposedPort)));
+
+        if (envVariables != null && !envVariables.isEmpty()) {
+            List<V1EnvVar> k8sEnvVars = new ArrayList<>();
+            envVariables.forEach((key, value) -> {
+                k8sEnvVars.add(new V1EnvVar().name(key).value(value));
+            });
+            container.env(k8sEnvVars);
+            log.info("Injected {} custom environment variables into pod template specs for: {}", k8sEnvVars.size(), deploymentName);
+        }
 
         V1PodTemplateSpec templateSpec = new V1PodTemplateSpec()
                 .metadata(new V1ObjectMeta().labels(labels))
@@ -295,4 +304,31 @@ public class KubernetesServiceImpl implements KubernetesService {
                     .execute();
         }
     }
+    @Override
+    public void updateDeploymentImage(String deploymentName, String newImageTag, Map<String, String> envVariables) throws Exception {
+        String namespace = "default";
+
+        V1Deployment k8sDep = getDeployment(deploymentName)
+                .orElseThrow(() -> new IllegalArgumentException("Cannot update image. Deployment not found: " + deploymentName));
+
+        if (k8sDep.getSpec() != null && k8sDep.getSpec().getTemplate().getSpec() != null) {
+            var containers = k8sDep.getSpec().getTemplate().getSpec().getContainers();
+            if (!containers.isEmpty()) {
+                var mainContainer = containers.get(0);
+                mainContainer.image(newImageTag);
+
+                if (envVariables != null) {
+                    List<io.kubernetes.client.openapi.models.V1EnvVar> k8sEnvVars = new ArrayList<>();
+                    envVariables.forEach((key, value) -> k8sEnvVars.add(new io.kubernetes.client.openapi.models.V1EnvVar().name(key).value(value)));
+                    mainContainer.env(k8sEnvVars);
+                }
+
+                log.info("Patching Kubernetes deployment [ {} ] container image reference to -> {}", deploymentName, newImageTag);
+
+                appsV1Api.replaceNamespacedDeployment(deploymentName, namespace, k8sDep)
+                        .execute();
+            }
+        }
+    }
+
 }

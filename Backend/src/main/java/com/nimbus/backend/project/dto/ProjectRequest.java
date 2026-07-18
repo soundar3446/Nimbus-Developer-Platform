@@ -4,6 +4,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -31,4 +34,5 @@ public class ProjectRequest {
     @NotBlank(message = "Image name must not be empty.")
     private String imageName;
 
+    private Map<String, String> environmentVariables = new HashMap<>();
 }

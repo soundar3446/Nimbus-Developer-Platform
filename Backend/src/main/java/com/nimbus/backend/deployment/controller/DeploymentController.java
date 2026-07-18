@@ -1,11 +1,14 @@
 package com.nimbus.backend.deployment.controller;
 
 import com.nimbus.backend.common.dto.ApiResponse;
+import com.nimbus.backend.deployment.entity.Deployment;
 import com.nimbus.backend.deployment.enums.DeploymentStatus;
 import com.nimbus.backend.deployment.service.DeploymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/deployments")
@@ -99,4 +102,18 @@ public class DeploymentController {
                     status
             ));
         }
+
+    /**
+     * GET /api/deployments/project/{projectUuid}
+     * Returns the complete chronological deployment history matrix tracking records for the target project.
+     */
+    @GetMapping("/project/{projectUuid}")
+    public ResponseEntity<ApiResponse<List<Deployment>>> getProjectHistory(@PathVariable("projectUuid") String projectUuid) {
+        List<Deployment> historyTree = deploymentService.getProjectDeploymentHistory(projectUuid);
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                "Project deployment timeline audit history logs retrieved successfully.",
+                historyTree
+        ));
+    }
 }
