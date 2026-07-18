@@ -166,7 +166,8 @@ public class KubernetesServiceImpl implements KubernetesService {
         return builder.build();
     }
 
-    public String fetchFailureLogs(String deploymentName) {
+    @Override
+    public String fetchLogs(String deploymentName) {
         String namespace = "default";
         try {
             V1PodList podList = coreV1Api.listNamespacedPod(namespace)

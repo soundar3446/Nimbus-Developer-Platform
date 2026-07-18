@@ -16,7 +16,7 @@ public interface KubernetesService {
 
     DeploymentSummaryDto getDeploymentSummary(String deploymentName);
 
-    String fetchFailureLogs(String deploymentName);
+    String fetchLogs(String deploymentName);
 
     V1Ingress createApplicationIngress(String deploymentName) throws Exception;
 

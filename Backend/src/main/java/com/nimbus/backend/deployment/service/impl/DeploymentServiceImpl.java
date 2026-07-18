@@ -136,7 +136,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                 log.error("Pod context compilation failed to reach a Running state within timeout limits.");
                 deployment.setStatus(DeploymentStatus.FAILED);
 
-                String structuralErrorLogs = kubernetesService.fetchFailureLogs(k8sDeploymentName);
+                String structuralErrorLogs = kubernetesService.fetchLogs(k8sDeploymentName);
                 log.error("--- CAPTURED CONTAINER CRASH LOG ENGINE OUTPUT ---\n{}", structuralErrorLogs);
             }
 
@@ -203,7 +203,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                 log.error("Application failed to spin up healthy pod replicas within tracking timeout limits.");
                 deployment.setStatus(DeploymentStatus.FAILED);
 
-                String failureLogs = kubernetesService.fetchFailureLogs(k8sDeploymentName);
+                String failureLogs = kubernetesService.fetchLogs(k8sDeploymentName);
                 log.error("--- CAPTURED RE-START CLUSTER LOGS ---\n{}", failureLogs);
             }
 
@@ -310,23 +310,15 @@ public class DeploymentServiceImpl implements DeploymentService {
             return "No execution runtime environment active for this deployment history log constraint.";
         }
 
-        try {
-            ProcessBuilder pb = new ProcessBuilder("docker", "logs", "--tail", "500", deployment.getContainerName());
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
+        String k8sDeploymentName = deployment.getContainerName(); // Contains "nimbus-{id}"
 
-            StringBuilder logBuffer = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    logBuffer.append(line).append("\n");
-                }
-            }
-            process.waitFor();
-            return logBuffer.toString();
+        try {
+            log.info("Fetching cloud-native runtime pod logs for application: {}", k8sDeploymentName);
+
+            return kubernetesService.fetchLogs(k8sDeploymentName);
 
         } catch (Exception e) {
-            log.error("Failed fetching live stream buffer maps from container process block", e);
+            log.error("Failed fetching live stream buffer maps from cluster pod block for deployment ID: {}", deploymentId, e);
             return "Infrastructure error occurred while attempting to parse execution logging context loops.";
         }
     }
