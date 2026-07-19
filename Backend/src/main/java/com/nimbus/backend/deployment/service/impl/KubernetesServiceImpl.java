@@ -391,8 +391,8 @@ public class KubernetesServiceImpl implements KubernetesService {
                 path,                        // REST path
                 "PATCH",                     // HTTP Verb method
                 new ArrayList<>(),           // query parameters
-                new ArrayList<>(),           // collection query parameters
-                jsonMergePatch,             // raw JSON patch delta string payload
+                new ArrayList<>(),           // collection query param
+                jsonMergePatch,             // JSON V1Patch Object
                 headerParams,                // manual content-type header injection override
                 new HashMap<>(),             // cookie params
                 new HashMap<>(),             // form params
