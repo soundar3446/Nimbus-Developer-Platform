@@ -3,6 +3,7 @@ package com.nimbus.backend.deployment.service.impl;
 import com.nimbus.backend.deployment.dto.DeploymentSummaryDto;
 import com.nimbus.backend.deployment.service.KubernetesService;
 import io.kubernetes.client.custom.IntOrString;
+import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
@@ -373,11 +374,45 @@ public class KubernetesServiceImpl implements KubernetesService {
         // 5. Fire the atomic patch transaction targeting the cluster control plane
         log.info("Patching Kubernetes deployment [ {} ] container image reference via JSON Merge Patch to -> {}", deploymentName, newImageTag);
 
-        appsV1Api.patchNamespacedDeployment(
-                deploymentName,
-                namespace,
-                jsonMergePatch
-        ).execute();
+        io.kubernetes.client.openapi.ApiClient client = appsV1Api.getApiClient();
+
+        // Build out the explicit REST route endpoint matching the cluster routing path exactly
+        String path = "/apis/apps/v1/namespaces/" + client.escapeString(namespace)
+                + "/deployments/" + client.escapeString(deploymentName);
+
+        // Configure headers manually to bypass the generated code's 415 media type constraint flaws
+        Map<String, String> headerParams = new HashMap<>();
+        headerParams.put("Accept", "application/json");
+        headerParams.put("Content-Type", "application/merge-patch+json"); // Forces correct patch media header format
+
+        // Fire the transaction through the native HTTP engine frame via public builder layout calls
+        okhttp3.Call rawHttpCall = client.buildCall(
+                null,                        // basePath (defaults to cluster context url)
+                path,                        // REST path
+                "PATCH",                     // HTTP Verb method
+                new ArrayList<>(),           // query parameters
+                new ArrayList<>(),           // collection query parameters
+                jsonMergePatch,             // JSON V1Patch Object
+                headerParams,                // manual content-type header injection override
+                new HashMap<>(),             // cookie params
+                new HashMap<>(),             // form params
+                new String[]{"BearerToken"}, // auth token scheme context configurations
+                null                         // callback listener wrapper object map
+        );
+
+        // Execute the patch call transaction and process structural execution failures
+        try (okhttp3.Response response = rawHttpCall.execute()) {
+            if (!response.isSuccessful()) {
+                String errorBody = response.body() != null ? response.body().string() : "Empty body response";
+                log.error("Cluster API patch execution rejection footprint: Code: {} | Body: {}", response.code(), errorBody);
+                throw new io.kubernetes.client.openapi.ApiException(
+                        "Patch transactional failure processing manifest: " + errorBody,
+                        response.code(),
+                        null,
+                        null
+                );
+            }
+        }
 
         log.info("Successfully pushed secret-aware atomic patch to cluster plane for zero-downtime rolling updates.");
     }
