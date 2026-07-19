@@ -393,6 +393,7 @@ public class KubernetesServiceImpl implements KubernetesService {
                 new ArrayList<>(),           // query parameters
                 new ArrayList<>(),           // collection query parameters
                 jsonMergePatch,             // V1 Patch payload body
+                new ArrayList<>(),           // collection query param
                 headerParams,                // manual content-type header injection override
                 new HashMap<>(),             // cookie params
                 new HashMap<>(),             // form params
