@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
 
@@ -28,6 +29,7 @@ public class KubernetesServiceImpl implements KubernetesService {
     public V1Deployment deployApplication(String deploymentName, String imageName, int targetExposedPort, Map<String, String> envVariables) throws Exception {
         String namespace = "default";
         Map<String, String> labels = Map.of("app", deploymentName);
+        String secretName = deploymentName + "-secrets";
 
         V1Container container = new V1Container()
                 .name(deploymentName + "-container")
@@ -36,12 +38,20 @@ public class KubernetesServiceImpl implements KubernetesService {
                 .ports(Collections.singletonList(new V1ContainerPort().containerPort(targetExposedPort)));
 
         if (envVariables != null && !envVariables.isEmpty()) {
-            List<V1EnvVar> k8sEnvVars = new ArrayList<>();
-            envVariables.forEach((key, value) -> {
-                k8sEnvVars.add(new V1EnvVar().name(key).value(value));
+            createOrUpdateNamespacedSecret(secretName, envVariables);
+
+            List<V1EnvVar> secureK8sEnvVars = new ArrayList<>();
+            envVariables.keySet().forEach(key -> {
+                secureK8sEnvVars.add(new V1EnvVar()
+                        .name(key)
+                        .valueFrom(new io.kubernetes.client.openapi.models.V1EnvVarSource()
+                                .secretKeyRef(new io.kubernetes.client.openapi.models.V1SecretKeySelector()
+                                        .name(secretName)
+                                        .key(key))));
             });
-            container.env(k8sEnvVars);
-            log.info("Injected {} custom environment variables into pod template specs for: {}", k8sEnvVars.size(), deploymentName);
+
+            container.env(secureK8sEnvVars);
+            log.info("Injected {} custom environment variables into pod template specs for: {}", secureK8sEnvVars.size(), deploymentName);
         }
 
         V1PodTemplateSpec templateSpec = new V1PodTemplateSpec()
@@ -304,30 +314,109 @@ public class KubernetesServiceImpl implements KubernetesService {
                     .execute();
         }
     }
+
     @Override
     public void updateDeploymentImage(String deploymentName, String newImageTag, Map<String, String> envVariables) throws Exception {
         String namespace = "default";
+        String secretName = deploymentName + "-secrets";
 
-        V1Deployment k8sDep = getDeployment(deploymentName)
-                .orElseThrow(() -> new IllegalArgumentException("Cannot update image. Deployment not found: " + deploymentName));
+        // 1. Refresh secret items inside the cluster framework first
+        if (envVariables != null && !envVariables.isEmpty()) {
+            createOrUpdateNamespacedSecret(secretName, envVariables);
+        }
 
-        if (k8sDep.getSpec() != null && k8sDep.getSpec().getTemplate().getSpec() != null) {
-            var containers = k8sDep.getSpec().getTemplate().getSpec().getContainers();
-            if (!containers.isEmpty()) {
-                var mainContainer = containers.get(0);
-                mainContainer.image(newImageTag);
+        log.info("Constructing secret-aware atomic JSON Merge Patch for zero-downtime rolling update on: {}", deploymentName);
 
-                if (envVariables != null) {
-                    List<io.kubernetes.client.openapi.models.V1EnvVar> k8sEnvVars = new ArrayList<>();
-                    envVariables.forEach((key, value) -> k8sEnvVars.add(new io.kubernetes.client.openapi.models.V1EnvVar().name(key).value(value)));
-                    mainContainer.env(k8sEnvVars);
+        // 2. Build out the updated environment source variable reference list
+        List<Map<String, Object>> secureEnvPatchList = new ArrayList<>();
+        if (envVariables != null && !envVariables.isEmpty()) {
+            envVariables.keySet().forEach(key -> {
+                Map<String, Object> secretKeyRef = new HashMap<>();
+                secretKeyRef.put("name", secretName);
+                secretKeyRef.put("key", key);
+
+                Map<String, Object> valueFrom = new HashMap<>();
+                valueFrom.put("secretKeyRef", secretKeyRef);
+
+                Map<String, Object> envEntry = new HashMap<>();
+                envEntry.put("name", key);
+                envEntry.put("valueFrom", valueFrom);
+
+                secureEnvPatchList.add(envEntry);
+            });
+        }
+
+        // 3. Assemble the atomic json patch delta map matching the exact K8s Spec path structure
+        Map<String, Object> containerDelta = new HashMap<>();
+        containerDelta.put("name", deploymentName + "-container");
+        containerDelta.put("image", newImageTag);
+        if (!secureEnvPatchList.isEmpty()) {
+            containerDelta.put("env", secureEnvPatchList);
+        }
+
+        Map<String, Object> podSpecDelta = new HashMap<>();
+        podSpecDelta.put("containers", List.of(containerDelta));
+
+        Map<String, Object> templateSpecDelta = new HashMap<>();
+        templateSpecDelta.put("spec", podSpecDelta);
+
+        Map<String, Object> deploymentSpecDelta = new HashMap<>();
+        deploymentSpecDelta.put("template", templateSpecDelta);
+
+        Map<String, Object> patchMap = new HashMap<>();
+        patchMap.put("spec", deploymentSpecDelta);
+
+        // 4. Convert our delta map into a structural V1Patch wrapper
+        String jsonPatchString = new com.google.gson.Gson().toJson(patchMap);
+        io.kubernetes.client.custom.V1Patch jsonMergePatch = new io.kubernetes.client.custom.V1Patch(jsonPatchString);
+
+        // 5. Fire the atomic patch transaction targeting the cluster control plane
+        log.info("Patching Kubernetes deployment [ {} ] container image reference via JSON Merge Patch to -> {}", deploymentName, newImageTag);
+
+        appsV1Api.patchNamespacedDeployment(
+                deploymentName,
+                namespace,
+                jsonMergePatch
+        ).execute();
+
+        log.info("Successfully pushed secret-aware atomic patch to cluster plane for zero-downtime rolling updates.");
+    }
+
+    @Override
+    public V1Secret createOrUpdateNamespacedSecret(String secretName, Map<String, String> rawSecrets) throws Exception {
+        String namespace = "default";
+
+        // 1. Standardize text strings to Base64 byte layouts for Kubernetes secret compatibility
+        Map<String, byte[]> encodedData = new HashMap<>();
+        if (rawSecrets != null) {
+            rawSecrets.forEach((key, value) -> {
+                if (value != null) {
+                    encodedData.put(key, value.getBytes(StandardCharsets.UTF_8));
                 }
+            });
+        }
 
-                log.info("Patching Kubernetes deployment [ {} ] container image reference to -> {}", deploymentName, newImageTag);
+        // 2. Assemble the structural V1Secret declaration footprint
+        V1Secret secretManifest = new V1Secret()
+                .apiVersion("v1")
+                .kind("Secret")
+                .metadata(new V1ObjectMeta()
+                        .name(secretName)
+                        .namespace(namespace))
+                .type("Opaque")
+                .data(encodedData);
 
-                appsV1Api.replaceNamespacedDeployment(deploymentName, namespace, k8sDep)
-                        .execute();
+        // 3. Perform a safe transactional Upsert routine inside the namespace
+        try {
+            log.info("Creating a secure Kubernetes Secret artifact object mapping for: {}", secretName);
+            return coreV1Api.createNamespacedSecret(namespace, secretManifest).execute();
+        } catch (ApiException e) {
+            if (e.getCode() == 409) { // Conflict -> Object already exists, perform a safe update patch instead
+                log.info("Secret footprint already exists for {}. Executing rolling update patch transaction...", secretName);
+                return coreV1Api.replaceNamespacedSecret(secretName, namespace, secretManifest).execute();
             }
+            log.error("Failed to construct cloud-native secret environment mapping for: {}", secretName, e);
+            throw e;
         }
     }
 

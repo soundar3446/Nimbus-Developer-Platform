@@ -3,6 +3,7 @@ package com.nimbus.backend.deployment.service;
 import com.nimbus.backend.deployment.dto.DeploymentSummaryDto;
 import io.kubernetes.client.openapi.models.V1Deployment;
 import io.kubernetes.client.openapi.models.V1Ingress;
+import io.kubernetes.client.openapi.models.V1Secret;
 import io.kubernetes.client.openapi.models.V1Service;
 
 import java.util.Map;
@@ -19,4 +20,5 @@ public interface KubernetesService {
     void updateDeploymentReplicas(V1Deployment deployment, int replicas) throws Exception;
     void rolloutRestartDeployment(V1Deployment deployment) throws Exception;
     void updateDeploymentImage(String deploymentName, String newImageTag, Map<String, String> envVariables) throws Exception;
+    V1Secret createOrUpdateNamespacedSecret(String secretName, Map<String, String> rawSecrets) throws Exception;
 }
