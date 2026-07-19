@@ -1,8 +1,10 @@
 package com.nimbus.backend.deployment.controller;
 
 import com.nimbus.backend.common.dto.ApiResponse;
+import com.nimbus.backend.deployment.dto.DeploymentResponseDto;
 import com.nimbus.backend.deployment.entity.Deployment;
 import com.nimbus.backend.deployment.enums.DeploymentStatus;
+import com.nimbus.backend.deployment.mapper.DeploymentMapper;
 import com.nimbus.backend.deployment.service.DeploymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -89,31 +91,48 @@ public class DeploymentController {
         ));
     }
 
-        /**
-         * GET /api/deployments/{id}/status
-         * Returns the exact tracking state metrics footprint of the targeting configuration ID.
-         */
-        @GetMapping("/{id}/status")
-        public ResponseEntity<ApiResponse<DeploymentStatus>> getDeploymentStatus(@PathVariable("id") Long id) {
-            DeploymentStatus status = deploymentService.getDeploymentStatus(id);
-            return ResponseEntity.ok(new ApiResponse<>(
-                    true,
-                    "Deployment status footprint retrieved successfully.",
-                    status
-            ));
-        }
+    /**
+     * GET /api/deployments/{id}/status
+     * Returns the exact tracking state metrics footprint of the targeting configuration ID.
+     */
+    @GetMapping("/{id}/status")
+    public ResponseEntity<ApiResponse<DeploymentStatus>> getDeploymentStatus(@PathVariable("id") Long id) {
+        DeploymentStatus status = deploymentService.getDeploymentStatus(id);
+
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                "Deployment status footprint retrieved successfully.",
+                status
+        ));
+    }
 
     /**
      * GET /api/deployments/project/{projectUuid}
      * Returns the complete chronological deployment history matrix tracking records for the target project.
      */
     @GetMapping("/project/{projectUuid}")
-    public ResponseEntity<ApiResponse<List<Deployment>>> getProjectHistory(@PathVariable("projectUuid") String projectUuid) {
-        List<Deployment> historyTree = deploymentService.getProjectDeploymentHistory(projectUuid);
+    public ResponseEntity<ApiResponse<List<DeploymentResponseDto>>> getProjectHistory(@PathVariable("projectUuid") String projectUuid) {
+        List<DeploymentResponseDto> historyTree = deploymentService.getProjectDeploymentHistory(projectUuid);
+
         return ResponseEntity.ok(new ApiResponse<>(
                 true,
                 "Project deployment timeline audit history logs retrieved successfully.",
                 historyTree
+        ));
+    }
+
+    /**
+     * POST /api/deployments/{id}/rollback
+     * Recovers cluster environments instantly back to a targeted historical deployment blueprint context state.
+     */
+    @PostMapping("/{id}/rollback")
+    public ResponseEntity<ApiResponse<DeploymentResponseDto>> rollbackToDeployment(@PathVariable("id") Long id) {
+        DeploymentResponseDto latestActiveRun = deploymentService.rollbackDeployment(id);
+
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                "Application version rollback recovery sequence executed successfully.",
+                latestActiveRun
         ));
     }
 }

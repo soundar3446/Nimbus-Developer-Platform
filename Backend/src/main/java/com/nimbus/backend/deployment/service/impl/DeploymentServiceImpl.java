@@ -1,9 +1,11 @@
 package com.nimbus.backend.deployment.service.impl;
 
 import com.nimbus.backend.common.exception.ResourceNotFoundException;
+import com.nimbus.backend.deployment.dto.DeploymentResponseDto;
 import com.nimbus.backend.deployment.dto.DeploymentSummaryDto;
 import com.nimbus.backend.deployment.entity.Deployment;
 import com.nimbus.backend.deployment.enums.DeploymentStatus;
+import com.nimbus.backend.deployment.mapper.DeploymentMapper;
 import com.nimbus.backend.deployment.repository.DeploymentRepository;
 import com.nimbus.backend.deployment.service.*;
 import com.nimbus.backend.project.entity.Project;
@@ -31,9 +33,9 @@ public class DeploymentServiceImpl implements DeploymentService {
     private final ProjectRepository projectRepository;
     private final DeploymentRepository deploymentRepository;
     private final GitService gitService;
-    private final DockerService dockerService;
     private final KubernetesService kubernetesService;
     private final DeploymentTrackingEngine deploymentTrackingEngine;
+    private final DeploymentMapper deploymentMapper;
 
     @Override
     @Async("taskExecutor") // Runs asynchronously so the REST API returns immediately
@@ -337,16 +339,18 @@ public class DeploymentServiceImpl implements DeploymentService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<Deployment> getProjectDeploymentHistory(String projectUuid) {
+    public List<DeploymentResponseDto> getProjectDeploymentHistory(String projectUuid) {
         Project project = projectRepository.findByUuid(projectUuid)
                 .orElseThrow(() -> new ResourceNotFoundException("Project target not found for UUID: " + projectUuid));
 
-        return deploymentRepository.findByProjectIdOrderByIdDesc(project.getId());
+        List<Deployment> historyTree = deploymentRepository.findByProjectIdOrderByIdDesc(project.getId());
+
+        return deploymentMapper.toResponseDtoList(historyTree);
     }
 
     @Override
     @Transactional
-    public Deployment rollbackDeployment(Long deploymentId) {
+    public DeploymentResponseDto rollbackDeployment(Long deploymentId) {
         long startTime = System.currentTimeMillis();
 
         Deployment historicalTarget = deploymentRepository.findById(deploymentId)
@@ -410,7 +414,9 @@ public class DeploymentServiceImpl implements DeploymentService {
             }
 
             projectRepository.save(project);
-            return deploymentRepository.save(rollbackAudit);
+            Deployment savedEntity = deploymentRepository.save(rollbackAudit);
+
+            return deploymentMapper.toResponseDto(savedEntity);
 
         } catch (Exception e) {
             log.error("Systemic error encountered executing cluster rollback routine for historical target ID: {}", deploymentId, e);

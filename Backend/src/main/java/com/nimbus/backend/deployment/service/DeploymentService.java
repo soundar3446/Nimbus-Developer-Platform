@@ -1,6 +1,6 @@
 package com.nimbus.backend.deployment.service;
 
-import com.nimbus.backend.deployment.entity.Deployment;
+import com.nimbus.backend.deployment.dto.DeploymentResponseDto;
 import com.nimbus.backend.deployment.enums.DeploymentStatus;
 
 import java.util.List;
@@ -12,6 +12,6 @@ public interface DeploymentService {
    void restartDeployment(Long deploymentId);
    String getDeploymentLogs(Long deploymentId);
    DeploymentStatus getDeploymentStatus(Long id);
-   List<Deployment> getProjectDeploymentHistory(String projectUuid);
-   Deployment rollbackDeployment(Long deploymentId);
+   List<DeploymentResponseDto> getProjectDeploymentHistory(String projectUuid);
+   DeploymentResponseDto rollbackDeployment(Long deploymentId);
 }
