@@ -3,11 +3,13 @@ package com.nimbus.backend.deployment.service.impl;
 import com.nimbus.backend.common.exception.ResourceNotFoundException;
 import com.nimbus.backend.deployment.dto.DeploymentResponseDto;
 import com.nimbus.backend.deployment.dto.DeploymentSummaryDto;
+import com.nimbus.backend.deployment.dto.DeploymentTaskEvent;
 import com.nimbus.backend.deployment.entity.Deployment;
 import com.nimbus.backend.deployment.enums.DeploymentStatus;
 import com.nimbus.backend.deployment.mapper.DeploymentMapper;
 import com.nimbus.backend.deployment.repository.DeploymentRepository;
 import com.nimbus.backend.deployment.service.*;
+import com.nimbus.backend.project.dto.ProjectRequest;
 import com.nimbus.backend.project.entity.Project;
 import com.nimbus.backend.project.enums.ProjectStatus;
 import com.nimbus.backend.project.repository.ProjectRepository;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,10 +39,11 @@ public class DeploymentServiceImpl implements DeploymentService {
     private final KubernetesService kubernetesService;
     private final DeploymentTrackingEngine deploymentTrackingEngine;
     private final DeploymentMapper deploymentMapper;
+    private final DeploymentQueueProducer deploymentQueueProducer;
 
     @Override
-    @Async("taskExecutor") // Runs asynchronously so the REST API returns immediately
-    public void triggerDeploymentPipeline(String projectId) {
+    @Transactional
+    public Deployment initiateDeploymentPipeline(String projectId) {
 
         long startTime = System.currentTimeMillis();
         log.info("Running on thread: {}", Thread.currentThread().getName());
@@ -47,31 +51,56 @@ public class DeploymentServiceImpl implements DeploymentService {
         Project project = projectRepository.findByUuid(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project target not found"));
 
-        String activeBranch = (project.getDefaultBranch() != null && !project.getDefaultBranch().isBlank())
-                ? project.getDefaultBranch() : "main";
         String targetImage = project.getImageName() + ":latest";
 
         // Initialize tracking record
         Deployment deployment = Deployment.builder()
                 .project(project)
-                .status(DeploymentStatus.CLONING)
+                .status(DeploymentStatus.QUEUED)
                 .imageTag(targetImage)
                 .gitCommitHash("Fetching....")
                 .build();
 
         deployment = deploymentRepository.save(deployment);
 
+        DeploymentTaskEvent taskEvent = DeploymentTaskEvent.builder()
+                .deploymentId(deployment.getId())
+                .imageName(targetImage)
+                .gitRepoUrl(project.getGithubRepo())
+                .branch(project.getDefaultBranch() != null ? project.getDefaultBranch() : "main")
+                .environmentVariables(project.getEnvironmentVariables()) // Pass configurations safely
+                .build();
+
+        deploymentQueueProducer.sendToBuildQueue(taskEvent);
+
+        return deployment;
+    }
+
+    @Override
+    public void executeClusterWorkload(DeploymentTaskEvent event) throws Exception {
+        long startTime = System.currentTimeMillis();
+        log.info("➔ [KAFKA CONTEXT] Engine processing build pipeline thread: {}", Thread.currentThread().getName());
+
+        Deployment deployment = deploymentRepository.findById(event.getDeploymentId())
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint missing: " + event.getDeploymentId()));
+
+        Project project = projectRepository.findByUuid(event.getProjectUuid())
+                .orElseThrow(() -> new ResourceNotFoundException("Associated project missing: " + event.getProjectUuid()));
+
+        // Advance baseline status directly out of the queue zone
+        deployment.setStatus(DeploymentStatus.CLONING);
+        deploymentRepository.save(deployment);
+
         File workspace = null;
-        String k8sDeploymentName = null;
+        String k8sDeploymentName = "nimbus-" + deployment.getId();
 
         try {
-
-            if(project.getOwner().getGithubIntegration() == null){
+            if (project.getOwner().getGithubIntegration() == null) {
                 throw new IllegalStateException("Project Owner does not have active GitHub Integration");
             }
 
             String token = project.getOwner().getGithubIntegration().getGithubAccessToken();
-            workspace = gitService.cloneRepository(project.getGithubRepo(), token, project.getDefaultBranch());
+            workspace = gitService.cloneRepository(event.getGitRepoUrl(), token, event.getBranch());
 
             String dfRelativePath = (project.getDockerfilePath() != null && !project.getDockerfilePath().isBlank())
                     ? project.getDockerfilePath() : "Dockerfile";
@@ -81,40 +110,34 @@ public class DeploymentServiceImpl implements DeploymentService {
             File absoluteDockerfile = new File(workspace, dfRelativePath);
             File absoluteBuildContext = new File(workspace, contextRelativePath);
 
-
             if (!absoluteDockerfile.exists() || !absoluteDockerfile.isFile()) {
-                throw new IllegalArgumentException("Declared Dockerfile not found at workspace location path: " + dfRelativePath);
+                throw new IllegalArgumentException("Declared Dockerfile not found at path: " + dfRelativePath);
             }
             if (!absoluteBuildContext.exists() || !absoluteBuildContext.isDirectory()) {
                 throw new IllegalArgumentException("Declared Build Context directory path not found: " + contextRelativePath);
             }
 
             log.info("Running user-configured docker build...");
-            log.info("   ↳ Dockerfile: {}", absoluteDockerfile.getAbsolutePath());
-            log.info("   ↳ Context:    {}", absoluteBuildContext.getAbsolutePath());
-
             deployment.setStatus(DeploymentStatus.BUILDING);
             deploymentRepository.save(deployment);
 
             executeSystemCommand(
-                    absoluteBuildContext, // Run the command *inside* the user's designated context directory
+                    absoluteBuildContext, // Execute build inside the user's designated context path location
                     "docker", "build",
                     "-f", absoluteDockerfile.getAbsolutePath(),
-                    "-t", targetImage,
+                    "-t", event.getImageName(),
                     "."
             );
 
-            log.info("User application container successfully compiled: {}", targetImage);
-
+            log.info("User application container successfully compiled: {}", event.getImageName());
             deployment.setStatus(DeploymentStatus.STARTING_CONTAINER);
             deploymentRepository.save(deployment);
 
-            k8sDeploymentName = "nimbus-" + deployment.getId();
             int targetPort = 8080;
-            Map<String, String> envVars = project.getEnvironmentVariables();
+            Map<String, String> envVars = event.getEnvironmentVariables();
 
             log.info("Orchestrating Kubernetes Deployment object: {}", k8sDeploymentName);
-            kubernetesService.deployApplication(k8sDeploymentName, targetImage, targetPort, envVars);
+            kubernetesService.deployApplication(k8sDeploymentName, event.getImageName(), targetPort, envVars);
 
             log.info("Orchestrating Kubernetes Service object: {}", k8sDeploymentName);
             kubernetesService.createClusterIPService(k8sDeploymentName, targetPort);
@@ -128,8 +151,6 @@ public class DeploymentServiceImpl implements DeploymentService {
 
             int timeoutSeconds = 180;
             boolean isHealthy = deploymentTrackingEngine.waitUntilDeploymentReady(k8sDeploymentName, timeoutSeconds);
-
-            DeploymentSummaryDto summary = kubernetesService.getDeploymentSummary(k8sDeploymentName);
 
             deployment.setDurationMs(System.currentTimeMillis() - startTime);
 
@@ -151,14 +172,22 @@ public class DeploymentServiceImpl implements DeploymentService {
             projectRepository.save(project);
 
         } catch (Exception e) {
-            log.error("Kubernetes engine deployment tracking layer failed on project UUID: {}", projectId, e);
+            log.error("Kubernetes engine deployment tracking layer failed on project UUID: {}", event.getProjectUuid(), e);
             deployment.setStatus(DeploymentStatus.FAILED);
+            deployment.setDurationMs(System.currentTimeMillis() - startTime);
             deploymentRepository.save(deployment);
+            throw e; // Rethrow exception out to trigger the consumer's error handling isolation block
         } finally {
             if (workspace != null && workspace.exists()) {
                 deleteDirectory(workspace);
             }
         }
+    }
+
+    @Override
+    @Deprecated
+    public void triggerDeploymentPipeline(String projectId) {
+        this.initiateDeploymentPipeline(projectId);
     }
 
     @Override
@@ -172,7 +201,6 @@ public class DeploymentServiceImpl implements DeploymentService {
         }
 
         String k8sDeploymentName = deployment.getContainerName();
-        String namespace = "default";
 
         try {
             log.info("Starting existing Kubernetes container layout: {}", k8sDeploymentName);
@@ -194,7 +222,6 @@ public class DeploymentServiceImpl implements DeploymentService {
                 } else {
                     log.info("Deployment footprint found. Scaling replica configuration back up to 1.");
                     V1Deployment k8sDep = deploymentOpt.get();
-
                     kubernetesService.updateDeploymentReplicas(deploymentOpt.get(), 1);
                 }
 

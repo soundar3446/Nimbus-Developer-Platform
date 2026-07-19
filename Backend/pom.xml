@@ -155,6 +155,10 @@
 			<artifactId>client-java</artifactId>
 			<version>27.0.0</version>
 		</dependency>
+		<dependency>
+			<groupId>org.springframework.kafka</groupId>
+			<artifactId>spring-kafka</artifactId>
+		</dependency>
 	</dependencies>
 
 	<build>

@@ -1,4 +1,4 @@
-package com.nimbus.backend.config;
+package com.nimbus.backend.common.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,7 +9,7 @@ import java.util.concurrent.Executor;
 
 @Configuration
 @EnableAsync
-class AsyncConfig {
+class AsyncConfig {  //might need for lightweight tasks.
 
     @Bean("taskExecutor")
     public Executor taskExecutor() {
@@ -18,7 +18,7 @@ class AsyncConfig {
         executor.setCorePoolSize(5);
         executor.setMaxPoolSize(10);
         executor.setQueueCapacity(50);
-        executor.setThreadNamePrefix("deployment-");
+        executor.setThreadNamePrefix("nimbus-async");
         executor.initialize();
 
         return executor;

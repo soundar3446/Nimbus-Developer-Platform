@@ -1,4 +1,4 @@
-package com.nimbus.backend.config;
+package com.nimbus.backend.common.config;
 
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.Configuration;
