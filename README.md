@@ -92,7 +92,7 @@ Deployment Status / Logs / History
 
 ## Backend
 
-- Java 25
+- Java 21
 - Spring Boot
 - Spring Security
 - Spring Data JPA
