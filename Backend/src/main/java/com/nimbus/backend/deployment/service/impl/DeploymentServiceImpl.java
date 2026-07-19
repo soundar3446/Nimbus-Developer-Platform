@@ -143,6 +143,8 @@ public class DeploymentServiceImpl implements DeploymentService {
 
                 String structuralErrorLogs = kubernetesService.fetchLogs(k8sDeploymentName);
                 log.error("--- CAPTURED CONTAINER CRASH LOG ENGINE OUTPUT ---\n{}", structuralErrorLogs);
+
+                handleAutomaticRollback(project, deployment);
             }
 
             deploymentRepository.save(deployment);
@@ -424,6 +426,60 @@ public class DeploymentServiceImpl implements DeploymentService {
             rollbackAudit.setDurationMs(System.currentTimeMillis() - startTime);
             deploymentRepository.save(rollbackAudit);
             throw new RuntimeException("Platform rollback recovery action failure", e);
+        }
+    }
+
+    private void handleAutomaticRollback(Project project, Deployment failedDeployment) {
+        log.warn("Searching historical audit tracks for last known stable image release for project: {}", project.getName());
+
+        // 1. Look up the last known stable deployment record matching the RUNNING status flag
+        java.util.Optional<Deployment> stableReleaseOpt = deploymentRepository
+                .findFirstByProjectIdAndStatusOrderByIdDesc(project.getId(), DeploymentStatus.RUNNING);
+
+        if (stableReleaseOpt.isEmpty()) {
+            log.error("Automatic rollback aborted: No historical stable release version exists for this application.");
+            return;
+        }
+
+        Deployment stableRelease = stableReleaseOpt.get();
+        log.info("Found stable recovery baseline: Deployment ID [ {} ] with image tag [ {} ]. Flashing fallback...",
+                stableRelease.getId(), stableRelease.getImageTag());
+
+        try {
+            // 2. Initialize the fallback tracking entry in the database
+            Deployment automaticRollbackAudit = Deployment.builder()
+                    .project(project)
+                    .status(DeploymentStatus.HEALTH_CHECK)
+                    .imageTag(stableRelease.getImageTag())
+                    .gitCommitHash("AUTO-ROLLBACK (Source: #" + failedDeployment.getId() + ")")
+                    .containerName(stableRelease.getContainerName())
+                    .applicationUrl(stableRelease.getApplicationUrl())
+                    .hostPort(stableRelease.getHostPort())
+                    .build();
+            automaticRollbackAudit = deploymentRepository.save(automaticRollbackAudit);
+
+            // 3. Hot-patch the active cluster deployment image mapping back to the stable container image version
+            Map<String, String> currentEnvVars = project.getEnvironmentVariables();
+            kubernetesService.updateDeploymentImage(stableRelease.getContainerName(), stableRelease.getImageTag(), currentEnvVars);
+
+            // 4. Poll the cluster to confirm the stable backup container instances stabilize correctly
+            boolean rollbackStabilized = deploymentTrackingEngine.waitUntilDeploymentReady(stableRelease.getContainerName(), 120);
+
+            if (rollbackStabilized) {
+                log.info("Self-healing sequence complete. Infrastructure rolled back to a healthy state successfully.");
+                automaticRollbackAudit.setStatus(DeploymentStatus.RUNNING);
+                project.setStatus(ProjectStatus.CONNECTED);
+            } else {
+                log.error("Critical System Alert: Fallback deployment failed to reach stable limits.");
+                automaticRollbackAudit.setStatus(DeploymentStatus.FAILED);
+                project.setStatus(ProjectStatus.FAILED);
+            }
+
+            deploymentRepository.save(automaticRollbackAudit);
+            projectRepository.save(project);
+
+        } catch (Exception e) {
+            log.error("Fatal exception encountered while executing automated cluster recovery sequence", e);
         }
     }
 
