@@ -42,4 +42,10 @@ public class Deployment extends BaseEntity {
     @Column(name = "application_url", length = 512)
     private String applicationUrl;
 
+    @Column(name = "image_tag")
+    private String imageTag;
+
+    @Column(name = "duration_ms")
+    private Long durationMs;
+
 }

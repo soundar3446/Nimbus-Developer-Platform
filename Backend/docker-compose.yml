@@ -29,6 +29,9 @@ services:
         - "8080:8080"
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
+        - /home/soundar/.kube/config:/root/.kube/config:ro
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
       restart: always
       env_file:
         - config.env
