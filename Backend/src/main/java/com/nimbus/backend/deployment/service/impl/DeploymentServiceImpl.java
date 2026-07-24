@@ -40,6 +40,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     private final DeploymentTrackingEngine deploymentTrackingEngine;
     private final DeploymentMapper deploymentMapper;
     private final DeploymentQueueProducer deploymentQueueProducer;
+    private final DeploymentStreamService deploymentStreamService;
 
     @Override
     @Transactional
@@ -91,6 +92,9 @@ public class DeploymentServiceImpl implements DeploymentService {
         deployment.setStatus(DeploymentStatus.CLONING);
         deploymentRepository.save(deployment);
 
+        deploymentStreamService.streamProgress(event.getDeploymentId(), event.getProjectUuid(),
+                DeploymentStatus.CLONING, 15, "Initiating VCS Git repository clone...");
+
         File workspace = null;
         String k8sDeploymentName = "nimbus-" + deployment.getId();
 
@@ -121,7 +125,12 @@ public class DeploymentServiceImpl implements DeploymentService {
             deployment.setStatus(DeploymentStatus.BUILDING);
             deploymentRepository.save(deployment);
 
+            deploymentStreamService.streamProgress(event.getDeploymentId(), event.getProjectUuid(),
+                    DeploymentStatus.BUILDING, 35, "Repository cloned successfully. Initializing Docker compilation...");
+
             executeSystemCommand(
+                    event.getDeploymentId(),
+                    event.getProjectUuid(),
                     absoluteBuildContext, // Execute build inside the user's designated context path location
                     "docker", "build",
                     "-f", absoluteDockerfile.getAbsolutePath(),
@@ -132,6 +141,9 @@ public class DeploymentServiceImpl implements DeploymentService {
             log.info("User application container successfully compiled: {}", event.getImageName());
             deployment.setStatus(DeploymentStatus.STARTING_CONTAINER);
             deploymentRepository.save(deployment);
+
+            deploymentStreamService.streamProgress(event.getDeploymentId(), event.getProjectUuid(),
+                    DeploymentStatus.STARTING_CONTAINER, 65, "Image compiled. Orchestrating Kubernetes resources...");
 
             int targetPort = 8080;
             Map<String, String> envVars = event.getEnvironmentVariables();
@@ -149,6 +161,9 @@ public class DeploymentServiceImpl implements DeploymentService {
             deployment.setContainerName(k8sDeploymentName);
             deploymentRepository.save(deployment);
 
+            deploymentStreamService.streamProgress(event.getDeploymentId(), event.getProjectUuid(),
+                    DeploymentStatus.HEALTH_CHECK, 85, "Kubernetes resources applied. Awaiting container pod health readiness...");
+
             int timeoutSeconds = 180;
             boolean isHealthy = deploymentTrackingEngine.waitUntilDeploymentReady(k8sDeploymentName, timeoutSeconds);
 
@@ -158,9 +173,16 @@ public class DeploymentServiceImpl implements DeploymentService {
                 log.info("Pod successfully scheduled and running in cluster! Promoting deployment status.");
                 deployment.setStatus(DeploymentStatus.RUNNING);
                 project.setStatus(ProjectStatus.CONNECTED);
+
+                deploymentStreamService.streamProgress(event.getDeploymentId(), event.getProjectUuid(),
+                        DeploymentStatus.RUNNING, 100, "Pod passed health probes. Application live!");
+
             } else {
                 log.error("Pod context compilation failed to reach a Running state within timeout limits.");
                 deployment.setStatus(DeploymentStatus.FAILED);
+
+                deploymentStreamService.streamProgress(event.getDeploymentId(), event.getProjectUuid(),
+                        DeploymentStatus.FAILED, 85, "Health check timeout reached. Application failed to stabilize.");
 
                 String structuralErrorLogs = kubernetesService.fetchLogs(k8sDeploymentName);
                 log.error("--- CAPTURED CONTAINER CRASH LOG ENGINE OUTPUT ---\n{}", structuralErrorLogs);
@@ -176,6 +198,10 @@ public class DeploymentServiceImpl implements DeploymentService {
             deployment.setStatus(DeploymentStatus.FAILED);
             deployment.setDurationMs(System.currentTimeMillis() - startTime);
             deploymentRepository.save(deployment);
+
+            deploymentStreamService.streamProgress(event.getDeploymentId(), event.getProjectUuid(),
+                    DeploymentStatus.FAILED, 0, "Build failed: " + e.getMessage());
+
             throw e; // Rethrow exception out to trigger the consumer's error handling isolation block
         } finally {
             if (workspace != null && workspace.exists()) {
@@ -510,7 +536,7 @@ public class DeploymentServiceImpl implements DeploymentService {
         }
     }
 
-    private void executeSystemCommand(File workingDir, String... command) throws Exception {
+    private void executeSystemCommand(Long deploymentId, String projectUuid ,File workingDir, String... command) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(workingDir);
         pb.redirectErrorStream(true);
@@ -521,6 +547,8 @@ public class DeploymentServiceImpl implements DeploymentService {
             String line;
             while ((line = reader.readLine()) != null) {
                 log.info("[DOCKER-BUILD] {}", line);
+
+                deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 35, line);
             }
         }
 
