@@ -8,6 +8,7 @@ import io.kubernetes.client.openapi.models.V1Service;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 public interface KubernetesService {
     V1Deployment deployApplication(String deploymentName, String imageName, int targetExposedPort, Map<String, String> envVariables) throws Exception;
@@ -21,4 +22,5 @@ public interface KubernetesService {
     void rolloutRestartDeployment(V1Deployment deployment) throws Exception;
     void updateDeploymentImage(String deploymentName, String newImageTag, Map<String, String> envVariables) throws Exception;
     V1Secret createOrUpdateNamespacedSecret(String secretName, Map<String, String> rawSecrets) throws Exception;
+    void streamPodLogs(String deploymentName, Consumer<String> logConsumer);
 }

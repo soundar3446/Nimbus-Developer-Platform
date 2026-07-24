@@ -3,19 +3,25 @@ package com.nimbus.backend.deployment.service.impl;
 import com.nimbus.backend.deployment.dto.DeploymentSummaryDto;
 import com.nimbus.backend.deployment.service.KubernetesService;
 import io.kubernetes.client.custom.IntOrString;
-import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.ApiException;
+import io.kubernetes.client.openapi.ApiResponse;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.NetworkingV1Api;
 import io.kubernetes.client.openapi.models.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.ResponseBody;
 import org.springframework.stereotype.Service;
 
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
+import java.util.function.Consumer;
 
 @Slf4j
 @Service
@@ -387,18 +393,17 @@ public class KubernetesServiceImpl implements KubernetesService {
 
         // Fire the transaction through the native HTTP engine frame via public builder layout calls
         okhttp3.Call rawHttpCall = client.buildCall(
-                null,                        // basePath (defaults to cluster context url)
-                path,                        // REST path
-                "PATCH",                     // HTTP Verb method
-                new ArrayList<>(),           // query parameters
-                new ArrayList<>(),           // collection query parameters
-                jsonMergePatch,             // V1 Patch payload body
-                new ArrayList<>(),           // collection query param
-                headerParams,                // manual content-type header injection override
-                new HashMap<>(),             // cookie params
-                new HashMap<>(),             // form params
-                new String[]{"BearerToken"}, // auth token scheme context configurations
-                null                         // callback listener wrapper object map
+                null,                        // 1. basePath (defaults to cluster context url)
+                path,                        // 2. REST path
+                "PATCH",                     // 3. HTTP Verb method
+                new ArrayList<>(),           // 4. queryParams
+                new ArrayList<>(),           // 5. collectionQueryParams
+                jsonMergePatch,              // 6. V1 Patch payload body
+                headerParams,                // 7. headerParams (manual content-type override)
+                new HashMap<>(),             // 8. cookieParams
+                new HashMap<>(),             // 9. formParams
+                new String[]{"BearerToken"}, // 10. authNames
+                null                         // 11. callback listener
         );
 
         // Execute the patch call transaction and process structural execution failures
@@ -456,4 +461,41 @@ public class KubernetesServiceImpl implements KubernetesService {
         }
     }
 
+    @Override
+    public void streamPodLogs(String deploymentName, Consumer<String> logConsumer) {
+        try {
+            // 1. Fetch active pod using fluent list call
+            V1PodList podList = coreV1Api.listNamespacedPod("default")
+                    .labelSelector("app=" + deploymentName)
+                    .execute();
+
+            if (podList.getItems() == null || podList.getItems().isEmpty()) {
+                logConsumer.accept("No active pods found for deployment: " + deploymentName);
+                return;
+            }
+
+            String podName = podList.getItems().get(0).getMetadata().getName();
+
+            // 2. Execute with HTTP Info to get the raw ApiResponse container
+            ApiResponse<String> apiResponse = coreV1Api.readNamespacedPodLog(podName, "default")
+                    .tailLines(100)
+                    .follow(true)
+                    .executeWithHttpInfo();
+
+            // 3. Read raw stream from the underlying OkHttp client call
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    apiResponse.getData() != null ?
+                            new java.io.ByteArrayInputStream(apiResponse.getData().getBytes()) :
+                            java.io.InputStream.nullInputStream()))) {
+
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    logConsumer.accept(line);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error streaming pod logs for {}", deploymentName, e);
+            logConsumer.accept("Error reading log stream: " + e.getMessage());
+        }
+    }
 }
