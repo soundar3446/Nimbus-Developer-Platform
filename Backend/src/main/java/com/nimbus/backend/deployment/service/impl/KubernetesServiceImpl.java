@@ -37,11 +37,14 @@ public class KubernetesServiceImpl implements KubernetesService {
         String namespace = "default";
         Map<String, String> labels = Map.of("app", deploymentName);
         String secretName = deploymentName + "-secrets";
+        String registrySecretName = "nimbus-reg-secret-" + deploymentName;
+
+        String pullPolicy = (imageName.contains("/") || imageName.contains(".")) ? "Always" : "IfNotPresent";
 
         V1Container container = new V1Container()
                 .name(deploymentName + "-container")
                 .image(imageName)
-                .imagePullPolicy("IfNotPresent")
+                .imagePullPolicy(pullPolicy)
                 .ports(Collections.singletonList(new V1ContainerPort().containerPort(targetExposedPort)));
 
         if (envVariables != null && !envVariables.isEmpty()) {
@@ -59,6 +62,22 @@ public class KubernetesServiceImpl implements KubernetesService {
 
             container.env(secureK8sEnvVars);
             log.info("Injected {} custom environment variables into pod template specs for: {}", secureK8sEnvVars.size(), deploymentName);
+        }
+
+        V1PodSpec podSpec = new V1PodSpec()
+                .containers(Collections.singletonList(container));
+
+        // Attach K8s docker-registry imagePullSecrets to pod spec if registry secret was registered
+        try {
+            coreV1Api.readNamespacedSecret(registrySecretName, namespace).execute();
+            podSpec.setImagePullSecrets(Collections.singletonList(
+                    new io.kubernetes.client.openapi.models.V1LocalObjectReference().name(registrySecretName)
+            ));
+            log.info("Attached imagePullSecrets reference [{}] to pod template spec", registrySecretName);
+        } catch (ApiException e) {
+            if (e.getCode() != 404) {
+                log.warn("Could not inspect imagePullSecrets existence for {}, proceeding without pull secrets", registrySecretName);
+            }
         }
 
         V1PodTemplateSpec templateSpec = new V1PodTemplateSpec()
@@ -496,6 +515,46 @@ public class KubernetesServiceImpl implements KubernetesService {
         } catch (Exception e) {
             log.error("Error streaming pod logs for {}", deploymentName, e);
             logConsumer.accept("Error reading log stream: " + e.getMessage());
+        }
+    }
+
+    public void createDockerRegistrySecret(String secretName, String registryServer, String username, String password) throws Exception {
+        String auth = username + ":" + password;
+        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
+
+        String dockerConfigJson = String.format(
+                "{\"auths\":{\"%s\":{\"username\":\"%s\",\"password\":\"%s\",\"auth\":\"%s\"}}}",
+                registryServer, username, password, encodedAuth
+        );
+
+        // 1. Set Metadata
+        V1ObjectMeta metadata = new V1ObjectMeta();
+        metadata.setName(secretName);
+        metadata.setNamespace("default");
+
+        // 2. Set Data Payload (Kubernetes expects byte[] values mapped to key names)
+        Map<String, byte[]> dataMap = new HashMap<>();
+        dataMap.put(".dockerconfigjson", dockerConfigJson.getBytes());
+
+        // 3. Assemble V1Secret POJO
+        V1Secret secret = new V1Secret();
+        secret.setApiVersion("v1");
+        secret.setKind("Secret");
+        secret.setMetadata(metadata);
+        secret.setType("kubernetes.io/dockerconfigjson");
+        secret.setData(dataMap);
+
+        // 4. Create or Replace Secret in Kubernetes
+        try {
+            coreV1Api.createNamespacedSecret("default", secret).execute();
+            log.info("Created K8s docker-registry secret: {}", secretName);
+        } catch (ApiException e) {
+            if (e.getCode() == 409) { // 409 Conflict -> Replace existing
+                coreV1Api.replaceNamespacedSecret(secretName, "default", secret).execute();
+                log.info("Updated existing K8s docker-registry secret: {}", secretName);
+            } else {
+                throw e;
+            }
         }
     }
 }

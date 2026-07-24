@@ -62,6 +62,15 @@ public class Project extends BaseEntity {
     @Builder.Default
     private Map<String, String> environmentVariables = new HashMap<>();
 
+    @Column(name = "registry_url")
+    private String registryUrl;
+
+    @Column(name = "registry_username")
+    private String registryUsername;
+
+    @Column(name = "registry_token")
+    private String registryToken;
+
     @PrePersist
     protected void onCreate() {
         if (this.uuid == null) {

@@ -23,4 +23,5 @@ public interface KubernetesService {
     void updateDeploymentImage(String deploymentName, String newImageTag, Map<String, String> envVariables) throws Exception;
     V1Secret createOrUpdateNamespacedSecret(String secretName, Map<String, String> rawSecrets) throws Exception;
     void streamPodLogs(String deploymentName, Consumer<String> logConsumer);
+    void createDockerRegistrySecret(String secretName, String registryServer, String username, String password) throws Exception;
 }

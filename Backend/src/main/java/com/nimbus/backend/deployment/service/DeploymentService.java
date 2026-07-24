@@ -18,4 +18,5 @@ public interface DeploymentService {
    List<DeploymentResponseDto> getProjectDeploymentHistory(String projectUuid);
    DeploymentResponseDto rollbackDeployment(Long deploymentId);
    void executeClusterWorkload(DeploymentTaskEvent event) throws Exception;
+   void pushImageToRegistry(Long deploymentId, String projectUuid, String registryUrl, String username, String token, String targetImage) throws Exception;
 }

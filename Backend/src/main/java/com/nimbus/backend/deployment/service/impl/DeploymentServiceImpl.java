@@ -139,6 +139,28 @@ public class DeploymentServiceImpl implements DeploymentService {
             );
 
             log.info("User application container successfully compiled: {}", event.getImageName());
+
+            if (project.getRegistryUrl() != null && !project.getRegistryUrl().isBlank()) {
+                String registrySecretName = "nimbus-reg-secret-" + k8sDeploymentName;
+
+                log.info("Provisioning Kubernetes Docker Registry Secret: {}", registrySecretName);
+                kubernetesService.createDockerRegistrySecret(
+                        registrySecretName,
+                        project.getRegistryUrl(),
+                        project.getRegistryUsername(),
+                        project.getRegistryToken()
+                );
+
+                pushImageToRegistry(
+                        event.getDeploymentId(),
+                        event.getProjectUuid(),
+                        project.getRegistryUrl(),
+                        project.getRegistryUsername(),
+                        project.getRegistryToken(),
+                        event.getImageName()
+                );
+            }
+
             deployment.setStatus(DeploymentStatus.STARTING_CONTAINER);
             deploymentRepository.save(deployment);
 
@@ -480,6 +502,45 @@ public class DeploymentServiceImpl implements DeploymentService {
             deploymentRepository.save(rollbackAudit);
             throw new RuntimeException("Platform rollback recovery action failure", e);
         }
+    }
+
+    @Override
+    public void pushImageToRegistry(
+            Long deploymentId,
+            String projectUuid,
+            String registryUrl,
+            String username,
+            String token,
+            String targetImage
+    ) throws Exception {
+
+        // 1. Authenticate with remote registry if credentials exist
+        if (registryUrl != null && !registryUrl.isBlank() && username != null && token != null) {
+            log.info("Authenticating with container registry: {}", registryUrl);
+            deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 40,
+                    "Authenticating with container registry " + registryUrl + "...");
+
+            executeSystemCommand(
+                    deploymentId, projectUuid, null,
+                    "docker", "login", registryUrl,
+                    "-u", username,
+                    "-p", token
+            );
+        }
+
+        // 2. Push compiled image to remote registry
+        log.info("Pushing image to remote registry: {}", targetImage);
+        deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 50,
+                "Pushing image to remote container registry: " + targetImage + "...");
+
+        executeSystemCommand(
+                deploymentId, projectUuid, null,
+                "docker", "push", targetImage
+        );
+
+        log.info("Successfully pushed image to registry: {}", targetImage);
+        deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 60,
+                "Image successfully published to container registry!");
     }
 
     private void handleAutomaticRollback(Project project, Deployment failedDeployment) {
