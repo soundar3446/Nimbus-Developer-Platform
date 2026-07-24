@@ -7,15 +7,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import com.nimbus.backend.metrics.service.PrometheusMetricsService;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.net.URI;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class PrometheusMetricsServiceImpl {
+public class PrometheusMetricsServiceImpl implements PrometheusMetricsService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -44,10 +48,18 @@ public class PrometheusMetricsServiceImpl {
     private List<MetricDataPoint> queryPrometheusRange(String query, long start, long end, String step) {
         List<MetricDataPoint> points = new ArrayList<>();
         try {
-            String url = String.format("%s/api/v1/query_range?query=%s&start=%d&end=%d&step=%s",
-                    prometheusUrl, query, start, end, step);
+           
+           URI targetUri = UriComponentsBuilder.fromUriString(prometheusUrl)
+                    .path("/api/v1/query_range")
+                    .queryParam("query", query)
+                    .queryParam("start", start)
+                    .queryParam("end", end)
+                    .queryParam("step", step)
+                    .build()
+                    .encode()
+                    .toUri();
 
-            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            Map<String, Object> response = restTemplate.getForObject(targetUri, Map.class);
             if (response != null && "success".equals(response.get("status"))) {
                 Map<String, Object> data = (Map<String, Object>) response.get("data");
                 List<Map<String, Object>> result = (List<Map<String, Object>>) data.get("result");

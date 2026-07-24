@@ -77,7 +77,8 @@ public class Project extends BaseEntity {
     @Column(name = "custom_domain", unique = true)
     private String customDomain; // e.g., "api.company.com"
 
-    @Column(name = "custom_domain_verified")
+    @Column(name = "custom_domain_verified" , nullable = false)
+    @Builder.Default
     private Boolean customDomainVerified = false;
 
     @PrePersist

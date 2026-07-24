@@ -66,6 +66,7 @@ public class DeploymentServiceImpl implements DeploymentService {
 
         DeploymentTaskEvent taskEvent = DeploymentTaskEvent.builder()
                 .deploymentId(deployment.getId())
+                .projectUuid(project.getUuid())
                 .imageName(targetImage)
                 .gitRepoUrl(project.getGithubRepo())
                 .branch(project.getDefaultBranch() != null ? project.getDefaultBranch() : "main")
@@ -177,7 +178,7 @@ public class DeploymentServiceImpl implements DeploymentService {
             kubernetesService.createClusterIPService(k8sDeploymentName, targetPort);
 
             log.info("Orchestrating Kubernetes Ingress object: {}", k8sDeploymentName);
-            kubernetesService.createApplicationIngress(k8sDeploymentName,project.getSubdomain(),project.getCustomDomain(),project.getCustomDomainVerified());
+            kubernetesService.createApplicationIngress(k8sDeploymentName,project.getSubdomain(),project.getCustomDomain(),Boolean.TRUE.equals(project.getCustomDomainVerified()));
 
             deployment.setStatus(DeploymentStatus.HEALTH_CHECK);
             deployment.setContainerName(k8sDeploymentName);

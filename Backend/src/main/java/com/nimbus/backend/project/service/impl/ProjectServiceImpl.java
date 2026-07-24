@@ -22,12 +22,12 @@ public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectRepository projectRepository;
     private final ProjectMapper projectMapper;
-    private final CurrentUserService currentUserService; // 🔥 Injected via Lombok
+    private final CurrentUserService currentUserService;
 
     @Override
     @Transactional
     public ProjectResponse createProject(ProjectRequest request) {
-        User currentUser = currentUserService.getCurrentUser(); // 🔥 Resolved directly inside the service business layer
+        User currentUser = currentUserService.getCurrentUser();
 
         Project project = projectMapper.toEntity(request);
         project.setOwner(currentUser);
@@ -57,13 +57,7 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse updateProject(String uuid, ProjectRequest request) {
         Project project = getProjectAndValidateOwner(uuid);
 
-        project.setName(request.getName());
-        project.setDescription(request.getDescription());
-        project.setGithubRepo(request.getGithubRepo());
-        project.setDefaultBranch(request.getDefaultBranch());
-        project.setDockerfilePath(request.getDockerfilePath());
-        project.setContextPath(request.getContextPath());
-        project.setImageName(request.getImageName());
+        projectMapper.updateProjectFromRequest(request, project);
 
         return projectMapper.toResponse(projectRepository.save(project));
     }
