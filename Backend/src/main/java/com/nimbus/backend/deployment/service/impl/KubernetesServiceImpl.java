@@ -237,9 +237,11 @@ public class KubernetesServiceImpl implements KubernetesService {
     public void createApplicationIngress(String deploymentName, String subdomain, String customDomain, boolean isCustomDomainVerified) throws Exception {
         String namespace = "default";
         String ingressName = deploymentName + "-ingress";
-        String baseDomain = "nimbus.app"; // System root domain
+        String tlsSecretName = deploymentName + "-tls-cert";
+        String baseDomain = "nimbus.app";
 
         List<V1IngressRule> rules = new ArrayList<>();
+        List<String> tlsHosts = new ArrayList<>();
 
         // 1. Default Subdomain Host (e.g., my-app.nimbus.app)
         String defaultHost = (subdomain != null && !subdomain.isBlank())
@@ -247,12 +249,24 @@ public class KubernetesServiceImpl implements KubernetesService {
                 : deploymentName + "." + baseDomain;
 
         rules.add(buildIngressRule(defaultHost, deploymentName, 8080));
+        tlsHosts.add(defaultHost);
 
         // 2. Custom Domain Host (if verified)
         if (customDomain != null && !customDomain.isBlank() && isCustomDomainVerified) {
             rules.add(buildIngressRule(customDomain, deploymentName, 8080));
+            tlsHosts.add(customDomain);
             log.info("Attached verified custom domain [{}] to Ingress: {}", customDomain, ingressName);
         }
+
+        V1IngressTLS tlsSpec = new V1IngressTLS()
+                .hosts(tlsHosts)
+                .secretName(tlsSecretName);
+
+        V1ObjectMeta metadata = new V1ObjectMeta()
+                .name(ingressName)
+                .putAnnotationsItem("kubernetes.io/ingress.class", "nginx")
+                .putAnnotationsItem("cert-manager.io/cluster-issuer", "letsencrypt-prod")
+                .putAnnotationsItem("nginx.ingress.kubernetes.io/ssl-redirect", "true");
 
         V1IngressSpec ingressSpec = new V1IngressSpec()
                 .ingressClassName("nginx") // Standard NGINX Ingress Controller
