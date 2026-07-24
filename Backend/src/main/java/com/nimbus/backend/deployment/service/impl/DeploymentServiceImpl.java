@@ -66,6 +66,7 @@ public class DeploymentServiceImpl implements DeploymentService {
 
         DeploymentTaskEvent taskEvent = DeploymentTaskEvent.builder()
                 .deploymentId(deployment.getId())
+                .projectUuid(project.getUuid())
                 .imageName(targetImage)
                 .gitRepoUrl(project.getGithubRepo())
                 .branch(project.getDefaultBranch() != null ? project.getDefaultBranch() : "main")
@@ -139,6 +140,28 @@ public class DeploymentServiceImpl implements DeploymentService {
             );
 
             log.info("User application container successfully compiled: {}", event.getImageName());
+
+            if (project.getRegistryUrl() != null && !project.getRegistryUrl().isBlank()) {
+                String registrySecretName = "nimbus-reg-secret-" + k8sDeploymentName;
+
+                log.info("Provisioning Kubernetes Docker Registry Secret: {}", registrySecretName);
+                kubernetesService.createDockerRegistrySecret(
+                        registrySecretName,
+                        project.getRegistryUrl(),
+                        project.getRegistryUsername(),
+                        project.getRegistryToken()
+                );
+
+                pushImageToRegistry(
+                        event.getDeploymentId(),
+                        event.getProjectUuid(),
+                        project.getRegistryUrl(),
+                        project.getRegistryUsername(),
+                        project.getRegistryToken(),
+                        event.getImageName()
+                );
+            }
+
             deployment.setStatus(DeploymentStatus.STARTING_CONTAINER);
             deploymentRepository.save(deployment);
 
@@ -155,7 +178,7 @@ public class DeploymentServiceImpl implements DeploymentService {
             kubernetesService.createClusterIPService(k8sDeploymentName, targetPort);
 
             log.info("Orchestrating Kubernetes Ingress object: {}", k8sDeploymentName);
-            kubernetesService.createApplicationIngress(k8sDeploymentName);
+            kubernetesService.createApplicationIngress(k8sDeploymentName,project.getSubdomain(),project.getCustomDomain(),Boolean.TRUE.equals(project.getCustomDomainVerified()));
 
             deployment.setStatus(DeploymentStatus.HEALTH_CHECK);
             deployment.setContainerName(k8sDeploymentName);
@@ -227,6 +250,7 @@ public class DeploymentServiceImpl implements DeploymentService {
         }
 
         String k8sDeploymentName = deployment.getContainerName();
+        Project project = deployment.getProject();
 
         try {
             log.info("Starting existing Kubernetes container layout: {}", k8sDeploymentName);
@@ -244,7 +268,7 @@ public class DeploymentServiceImpl implements DeploymentService {
 
                     kubernetesService.deployApplication(k8sDeploymentName, targetImage, targetPort, envVars);
                     kubernetesService.createClusterIPService(k8sDeploymentName, targetPort);
-                    kubernetesService.createApplicationIngress(k8sDeploymentName);
+                    kubernetesService.createApplicationIngress(k8sDeploymentName, project.getSubdomain(),project.getCustomDomain(),Boolean.TRUE.equals(project.getCustomDomainVerified()));
                 } else {
                     log.info("Deployment footprint found. Scaling replica configuration back up to 1.");
                     V1Deployment k8sDep = deploymentOpt.get();
@@ -443,7 +467,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                 log.warn("Active cluster workload structure missing during rollback. Performing full manifest reconstruction.");
                 kubernetesService.deployApplication(historicalTarget.getContainerName(), historicalTarget.getImageTag(), targetPort, currentEnvVars);
                 kubernetesService.createClusterIPService(historicalTarget.getContainerName(), targetPort);
-                kubernetesService.createApplicationIngress(historicalTarget.getContainerName());
+                kubernetesService.createApplicationIngress(historicalTarget.getContainerName(), project.getSubdomain(), project.getCustomDomain(), Boolean.TRUE.equals(project.getCustomDomainVerified()));
             } else {
                 log.info("Active workload footprint found. Updating live pod template image context to target rollback version.");
                 // We'll leverage a new helper method in our Kubernetes service layer to update the image tag inline
@@ -480,6 +504,45 @@ public class DeploymentServiceImpl implements DeploymentService {
             deploymentRepository.save(rollbackAudit);
             throw new RuntimeException("Platform rollback recovery action failure", e);
         }
+    }
+
+    @Override
+    public void pushImageToRegistry(
+            Long deploymentId,
+            String projectUuid,
+            String registryUrl,
+            String username,
+            String token,
+            String targetImage
+    ) throws Exception {
+
+        // 1. Authenticate with remote registry if credentials exist
+        if (registryUrl != null && !registryUrl.isBlank() && username != null && token != null) {
+            log.info("Authenticating with container registry: {}", registryUrl);
+            deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 40,
+                    "Authenticating with container registry " + registryUrl + "...");
+
+            executeSystemCommand(
+                    deploymentId, projectUuid, null,
+                    "docker", "login", registryUrl,
+                    "-u", username,
+                    "-p", token
+            );
+        }
+
+        // 2. Push compiled image to remote registry
+        log.info("Pushing image to remote registry: {}", targetImage);
+        deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 50,
+                "Pushing image to remote container registry: " + targetImage + "...");
+
+        executeSystemCommand(
+                deploymentId, projectUuid, null,
+                "docker", "push", targetImage
+        );
+
+        log.info("Successfully pushed image to registry: {}", targetImage);
+        deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 60,
+                "Image successfully published to container registry!");
     }
 
     private void handleAutomaticRollback(Project project, Deployment failedDeployment) {

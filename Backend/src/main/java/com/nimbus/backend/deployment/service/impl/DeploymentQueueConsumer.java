@@ -17,7 +17,7 @@ public class DeploymentQueueConsumer {
     private final DeploymentService deploymentService;
     private final DeploymentRepository deploymentRepository;
 
-    @KafkaListener(topics = "nimbus-deployment-builds", groupId = "nimbus-deployment-group")
+    @KafkaListener(topics = "nimbus-deployment-builds", groupId = "nimbus-deployment-group", containerFactory = "kafkaListenerContainerFactory")
     public void consumeDeploymentTask(DeploymentTaskEvent event) {
         long startTime = System.currentTimeMillis();
         log.info("➔ [KAFKA CONSUMER] Dequeued task tracking ID [{}] for compilation workflow.", event.getDeploymentId());

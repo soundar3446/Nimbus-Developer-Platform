@@ -62,6 +62,25 @@ public class Project extends BaseEntity {
     @Builder.Default
     private Map<String, String> environmentVariables = new HashMap<>();
 
+    @Column(name = "registry_url")
+    private String registryUrl;
+
+    @Column(name = "registry_username")
+    private String registryUsername;
+
+    @Column(name = "registry_token")
+    private String registryToken;
+
+    @Column(name = "subdomain", unique = true)
+    private String subdomain; // e.g., "my-awesome-app" -> my-awesome-app.nimbus.app
+
+    @Column(name = "custom_domain", unique = true)
+    private String customDomain; // e.g., "api.company.com"
+
+    @Column(name = "custom_domain_verified" , nullable = false)
+    @Builder.Default
+    private Boolean customDomainVerified = false;
+
     @PrePersist
     protected void onCreate() {
         if (this.uuid == null) {

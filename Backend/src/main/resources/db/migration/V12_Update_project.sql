@@ -1,0 +1,1 @@
+UPDATE projects SET custom_domain_verified = FALSE WHERE custom_domain_verified IS NULL;
