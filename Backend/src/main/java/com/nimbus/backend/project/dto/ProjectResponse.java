@@ -27,5 +27,15 @@ public class ProjectResponse {
     private String dockerfilePath;
     private String contextPath;
     private String imageName;
+
+    private String subdomain;
+    private String defaultUrl;
+    private String customDomain;
+    private Boolean customDomainVerified;
+
+    private String registryUrl;
+    private String registryUsername;
+
+    @Builder.Default
     private Map<String, String> environmentVariables = new HashMap<>();
 }

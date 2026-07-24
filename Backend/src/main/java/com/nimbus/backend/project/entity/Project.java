@@ -71,6 +71,15 @@ public class Project extends BaseEntity {
     @Column(name = "registry_token")
     private String registryToken;
 
+    @Column(name = "subdomain", unique = true)
+    private String subdomain; // e.g., "my-awesome-app" -> my-awesome-app.nimbus.app
+
+    @Column(name = "custom_domain", unique = true)
+    private String customDomain; // e.g., "api.company.com"
+
+    @Column(name = "custom_domain_verified")
+    private Boolean customDomainVerified = false;
+
     @PrePersist
     protected void onCreate() {
         if (this.uuid == null) {

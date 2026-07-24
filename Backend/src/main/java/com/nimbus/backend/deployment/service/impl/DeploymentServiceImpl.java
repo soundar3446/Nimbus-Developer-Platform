@@ -177,7 +177,7 @@ public class DeploymentServiceImpl implements DeploymentService {
             kubernetesService.createClusterIPService(k8sDeploymentName, targetPort);
 
             log.info("Orchestrating Kubernetes Ingress object: {}", k8sDeploymentName);
-            kubernetesService.createApplicationIngress(k8sDeploymentName);
+            kubernetesService.createApplicationIngress(k8sDeploymentName,project.getSubdomain(),project.getCustomDomain(),project.getCustomDomainVerified());
 
             deployment.setStatus(DeploymentStatus.HEALTH_CHECK);
             deployment.setContainerName(k8sDeploymentName);
@@ -249,6 +249,7 @@ public class DeploymentServiceImpl implements DeploymentService {
         }
 
         String k8sDeploymentName = deployment.getContainerName();
+        Project project = deployment.getProject();
 
         try {
             log.info("Starting existing Kubernetes container layout: {}", k8sDeploymentName);
@@ -266,7 +267,7 @@ public class DeploymentServiceImpl implements DeploymentService {
 
                     kubernetesService.deployApplication(k8sDeploymentName, targetImage, targetPort, envVars);
                     kubernetesService.createClusterIPService(k8sDeploymentName, targetPort);
-                    kubernetesService.createApplicationIngress(k8sDeploymentName);
+                    kubernetesService.createApplicationIngress(k8sDeploymentName, project.getSubdomain(),project.getCustomDomain(),Boolean.TRUE.equals(project.getCustomDomainVerified()));
                 } else {
                     log.info("Deployment footprint found. Scaling replica configuration back up to 1.");
                     V1Deployment k8sDep = deploymentOpt.get();
@@ -465,7 +466,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                 log.warn("Active cluster workload structure missing during rollback. Performing full manifest reconstruction.");
                 kubernetesService.deployApplication(historicalTarget.getContainerName(), historicalTarget.getImageTag(), targetPort, currentEnvVars);
                 kubernetesService.createClusterIPService(historicalTarget.getContainerName(), targetPort);
-                kubernetesService.createApplicationIngress(historicalTarget.getContainerName());
+                kubernetesService.createApplicationIngress(historicalTarget.getContainerName(), project.getSubdomain(), project.getCustomDomain(), Boolean.TRUE.equals(project.getCustomDomainVerified()));
             } else {
                 log.info("Active workload footprint found. Updating live pod template image context to target rollback version.");
                 // We'll leverage a new helper method in our Kubernetes service layer to update the image tag inline

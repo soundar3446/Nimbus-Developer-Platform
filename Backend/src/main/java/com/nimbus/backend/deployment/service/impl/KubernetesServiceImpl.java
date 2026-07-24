@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 
 
 import java.io.BufferedReader;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -234,50 +233,64 @@ public class KubernetesServiceImpl implements KubernetesService {
         return "No container failure logs could be retrieved from the cluster.";
     }
 
-    public V1Ingress createApplicationIngress(String deploymentName) throws Exception {
-        log.info("Generating NGINX Ingress routing rules for app target: {}", deploymentName);
+    @Override
+    public void createApplicationIngress(String deploymentName, String subdomain, String customDomain, boolean isCustomDomainVerified) throws Exception {
         String namespace = "default";
+        String ingressName = deploymentName + "-ingress";
+        String baseDomain = "nimbus.app"; // System root domain
 
-        // 1. Map target backend port target values
-        V1ServiceBackendPort backendPort = new V1ServiceBackendPort().number(80);
-        V1IngressServiceBackend serviceBackend = new V1IngressServiceBackend()
-                .name(deploymentName)
-                .port(backendPort);
+        List<V1IngressRule> rules = new ArrayList<>();
 
-        V1IngressBackend backend = new V1IngressBackend().service(serviceBackend);
+        // 1. Default Subdomain Host (e.g., my-app.nimbus.app)
+        String defaultHost = (subdomain != null && !subdomain.isBlank())
+                ? subdomain + "." + baseDomain
+                : deploymentName + "." + baseDomain;
 
-        // 2. Configure HTTP Path Routing structure (Prefix Matching)
-        V1HTTPIngressPath ingressPath = new V1HTTPIngressPath()
-                .path("/apps/" + deploymentName)
-                .pathType("Prefix")
-                .backend(backend);
+        rules.add(buildIngressRule(defaultHost, deploymentName, 8080));
 
-        V1HTTPIngressRuleValue httpRuleValue = new V1HTTPIngressRuleValue()
-                .paths(Collections.singletonList(ingressPath));
+        // 2. Custom Domain Host (if verified)
+        if (customDomain != null && !customDomain.isBlank() && isCustomDomainVerified) {
+            rules.add(buildIngressRule(customDomain, deploymentName, 8080));
+            log.info("Attached verified custom domain [{}] to Ingress: {}", customDomain, ingressName);
+        }
 
-        V1IngressRule rule = new V1IngressRule().http(httpRuleValue);
+        V1IngressSpec ingressSpec = new V1IngressSpec()
+                .ingressClassName("nginx") // Standard NGINX Ingress Controller
+                .rules(rules);
 
-        // 3. Assemble Spec and Add Standard Controller Routing Annotations
-        V1ObjectMeta metadata = new V1ObjectMeta();
-        metadata.setName(deploymentName);
-        metadata.setLabels(Map.of("app", deploymentName));
-
-        // Crucial for telling the local cluster which routing controller executes the manifest
-        metadata.setAnnotations(Map.of(
-                "kubernetes.io/ingress.class", "nginx",
-                "nginx.ingress.kubernetes.io/rewrite-target", "/"
-        ));
-
-        V1IngressSpec spec = new V1IngressSpec()
-                .rules(Collections.singletonList(rule));
-
-        V1Ingress ingressManifest = new V1Ingress()
+        V1Ingress ingress = new V1Ingress()
                 .apiVersion("networking.k8s.io/v1")
                 .kind("Ingress")
-                .metadata(metadata)
-                .spec(spec);
+                .metadata(new V1ObjectMeta()
+                        .name(ingressName)
+                        .putAnnotationsItem("nginx.ingress.kubernetes.io/ssl-redirect", "false")) // Handled in Phase 9 with Cert-Manager
+                .spec(ingressSpec);
 
-        return networkingV1Api.createNamespacedIngress(namespace, ingressManifest).execute();
+        try {
+            networkingV1Api.createNamespacedIngress(namespace, ingress).execute();
+            log.info("Created K8s Ingress routing for host: {}", defaultHost);
+        } catch (ApiException e) {
+            if (e.getCode() == 409) { // 409 Conflict -> Replace existing rule
+                networkingV1Api.replaceNamespacedIngress(ingressName, namespace, ingress).execute();
+                log.info("Updated existing K8s Ingress routing: {}", ingressName);
+            } else {
+                throw e;
+            }
+        }
+    }
+
+    // Helper method to construct Ingress Rule paths
+    private V1IngressRule buildIngressRule(String host, String serviceName, int servicePort) {
+        return new V1IngressRule()
+                .host(host)
+                .http(new V1HTTPIngressRuleValue()
+                        .addPathsItem(new V1HTTPIngressPath()
+                                .path("/")
+                                .pathType("Prefix")
+                                .backend(new V1IngressBackend()
+                                        .service(new V1IngressServiceBackend()
+                                                .name(serviceName)
+                                                .port(new V1ServiceBackendPort().number(servicePort))))));
     }
 
     @Override

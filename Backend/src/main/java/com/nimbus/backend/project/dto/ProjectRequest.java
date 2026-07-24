@@ -1,6 +1,7 @@
 package com.nimbus.backend.project.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
@@ -34,5 +35,16 @@ public class ProjectRequest {
     @NotBlank(message = "Image name must not be empty.")
     private String imageName;
 
+    @Pattern(regexp = "^[a-z0-9-]+$", message = "Subdomain can only contain lowercase letters, numbers, and hyphens.")
+    @Size(min = 3, max = 63, message = "Subdomain length must be between 3 and 63 characters.")
+    private String subdomain;
+
+    private String customDomain;
+
+    private String registryUrl;
+    private String registryUsername;
+    private String registryToken;
+
+    @Builder.Default
     private Map<String, String> environmentVariables = new HashMap<>();
 }

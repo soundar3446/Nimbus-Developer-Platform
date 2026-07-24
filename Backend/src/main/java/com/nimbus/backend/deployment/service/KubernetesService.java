@@ -16,7 +16,7 @@ public interface KubernetesService {
     V1Service createClusterIPService(String deploymentName, int targetPort) throws Exception;
     DeploymentSummaryDto getDeploymentSummary(String deploymentName);
     String fetchLogs(String deploymentName);
-    V1Ingress createApplicationIngress(String deploymentName) throws Exception;
+    V1Ingress createApplicationIngress(String k8sDeploymentName, String subdomain, String customDomain, boolean isCustomDomainVerified) throws Exception;
     Optional<V1Deployment> getDeployment(String deploymentName);
     void updateDeploymentReplicas(V1Deployment deployment, int replicas) throws Exception;
     void rolloutRestartDeployment(V1Deployment deployment) throws Exception;
