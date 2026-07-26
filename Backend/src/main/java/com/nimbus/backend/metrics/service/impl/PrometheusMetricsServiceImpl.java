@@ -23,15 +23,18 @@ public class PrometheusMetricsServiceImpl implements PrometheusMetricsService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Value("${prometheus.server.url:http://prometheus-k8s.monitoring.svc.cluster.local:9090}")
+    @Value("${prometheus.server.url=http://prometheus.monitoring.svc.cluster.local:9090}")
     private String prometheusUrl;
 
     public PodMetricsResponse getPodMetrics(String deploymentName, long startEpochSec, long endEpochSec) {
         // PromQL Query 1: CPU usage rate per pod
-        String cpuQuery = String.format("sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{pod=~\"%s-.*\"})", deploymentName);
-
+        String cpuQuery = String.format(
+                "sum(rate(container_cpu_usage_seconds_total{pod=~\"%s-.*\",container!=\"\",image!=\"\"}[1m]))",
+                deploymentName);
         // PromQL Query 2: Memory usage per pod in MB
-        String memoryQuery = String.format("sum(container_memory_working_set_bytes{pod=~\"%s-.*\"}) / 1024 / 1024", deploymentName);
+        String memoryQuery = String.format(
+                "sum(container_memory_working_set_bytes{pod=~\"%s-.*\",container!=\"\",image!=\"\"}) / 1024 / 1024",
+                deploymentName);
 
         List<MetricDataPoint> cpuData = queryPrometheusRange(cpuQuery, startEpochSec, endEpochSec, "15s");
         List<MetricDataPoint> memoryData = queryPrometheusRange(memoryQuery, startEpochSec, endEpochSec, "15s");
