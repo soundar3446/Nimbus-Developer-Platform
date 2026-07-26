@@ -1,6 +1,7 @@
 package com.nimbus.backend.deployment.service.impl;
 
 import com.nimbus.backend.common.exception.ResourceNotFoundException;
+import com.nimbus.backend.deployment.dto.DeploymentListResponse;
 import com.nimbus.backend.deployment.dto.DeploymentResponseDto;
 import com.nimbus.backend.deployment.dto.DeploymentSummaryDto;
 import com.nimbus.backend.deployment.dto.DeploymentTaskEvent;
@@ -13,7 +14,10 @@ import com.nimbus.backend.project.dto.ProjectRequest;
 import com.nimbus.backend.project.entity.Project;
 import com.nimbus.backend.project.enums.ProjectStatus;
 import com.nimbus.backend.project.repository.ProjectRepository;
+import io.kubernetes.client.openapi.apis.AppsV1Api;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1Deployment;
+import io.kubernetes.client.openapi.models.V1Status;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -544,6 +548,17 @@ public class DeploymentServiceImpl implements DeploymentService {
         deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 60,
                 "Image successfully published to container registry!");
     }
+
+    @Override
+    public List<DeploymentListResponse> listAllDeployments(String nameSpace){
+        return kubernetesService.listAllDeployments(nameSpace);
+    }
+
+    @Override
+    public boolean deleteUserDeployment(String deploymentId, String namespace){
+        return kubernetesService.deleteUserDeployment(deploymentId, namespace);
+    }
+
 
     private void handleAutomaticRollback(Project project, Deployment failedDeployment) {
         log.warn("Searching historical audit tracks for last known stable image release for project: {}", project.getName());

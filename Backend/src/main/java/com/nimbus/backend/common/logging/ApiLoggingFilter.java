@@ -44,7 +44,6 @@ public class ApiLoggingFilter extends OncePerRequestFilter {
             logRequestDetails(requestWrapper);
             logResponseDetails(responseWrapper, duration);
 
-            // 🔥 CRITICAL: Copy cached response body back to the real response stream so the client receives it
             responseWrapper.copyBodyToResponse();
         }
     }
