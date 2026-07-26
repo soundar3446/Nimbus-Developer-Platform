@@ -4,6 +4,7 @@ import com.nimbus.backend.auth.dto.AuthenticationResponse;
 import com.nimbus.backend.auth.dto.LoginRequest;
 import com.nimbus.backend.auth.dto.RegisterRequest;
 import com.nimbus.backend.auth.jwt.JwtService;
+import com.nimbus.backend.auth.jwt.TokenBlacklistService;
 import com.nimbus.backend.auth.service.AuthenticationService;
 import com.nimbus.backend.common.exception.AlreadyExistsException;
 import com.nimbus.backend.user.entity.User;
@@ -26,6 +27,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private final JwtService javaJwtService;
     private final UserDetailsService userDetailsService;
     private final AuthenticationManager authenticationManager; // Handles credential checks
+    private final TokenBlacklistService tokenBlacklistService;
 
     @Override
     @Transactional
@@ -39,13 +41,17 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         User user = User.builder()
                 .name(request.getName())
                 .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword())) // 🔥 Securely Hashed
+                .password(passwordEncoder.encode(request.getPassword())) // Securely Hashed
                 .build();
 
         userRepository.save(user);
 
         // 3. Automatically sign them in by generating a token upon registration completion
-        UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
+        UserDetails userDetails = org.springframework.security.core.userdetails.User
+                .withUsername(user.getEmail())
+                .password(user.getPassword())
+                .authorities(java.util.Collections.emptyList())
+                .build();
         String jwtToken = javaJwtService.generateToken(userDetails);
 
         return AuthenticationResponse.builder()
@@ -81,6 +87,15 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .email(user.getEmail())
                 .name(user.getName())
                 .build();
+    }
+
+    @Override
+    public void logout(String token) {
+        String authHeader = token;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String jwt = authHeader.substring(7);
+            tokenBlacklistService.blacklistToken(jwt);
+        }
     }
 
 }
