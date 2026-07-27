@@ -40,13 +40,20 @@ public class PrometheusMetricsServiceImpl implements PrometheusMetricsService {
             "sum(container_memory_working_set_bytes{pod=~\"%s-.*\",container!=\"\",container!=\"POD\"}) / 1024 / 1024",
             formattedPrefix);
 
+        // Network I/O (bytes/sec)
+        String networkQuery = String.format(
+            "sum(irate(container_network_receive_bytes_total{pod=~\"%s-.*\"}[2m])) + sum(irate(container_network_transmit_bytes_total{pod=~\"%s-.*\"}[2m]))",
+            formattedPrefix, formattedPrefix);
+
         List<MetricDataPoint> cpuData = queryPrometheusRange(cpuQuery, startEpochSec, endEpochSec, "15s");
         List<MetricDataPoint> memoryData = queryPrometheusRange(memoryQuery, startEpochSec, endEpochSec, "15s");
+        List<MetricDataPoint> networkIoData = queryPrometheusRange(networkQuery, startEpochSec, endEpochSec, "15s");
 
         return PodMetricsResponse.builder()
                 .deploymentName(deploymentName)
                 .cpuUsageHistory(cpuData)
                 .memoryUsageHistory(memoryData)
+                .networkIoHistory(networkIoData)
                 .build();
     }
 

@@ -1,34 +1,27 @@
 package com.nimbus.backend.deployment.service.impl;
 
+import com.nimbus.backend.auth.service.CurrentUserService;
 import com.nimbus.backend.common.exception.ResourceNotFoundException;
 import com.nimbus.backend.deployment.dto.DeploymentListResponse;
 import com.nimbus.backend.deployment.dto.DeploymentResponseDto;
-import com.nimbus.backend.deployment.dto.DeploymentSummaryDto;
 import com.nimbus.backend.deployment.dto.DeploymentTaskEvent;
 import com.nimbus.backend.deployment.entity.Deployment;
 import com.nimbus.backend.deployment.enums.DeploymentStatus;
 import com.nimbus.backend.deployment.mapper.DeploymentMapper;
 import com.nimbus.backend.deployment.repository.DeploymentRepository;
 import com.nimbus.backend.deployment.service.*;
-import com.nimbus.backend.project.dto.ProjectRequest;
 import com.nimbus.backend.project.entity.Project;
 import com.nimbus.backend.project.enums.ProjectStatus;
 import com.nimbus.backend.project.repository.ProjectRepository;
-import com.nimbus.backend.user.service.CurrentUserService;
-import io.kubernetes.client.openapi.apis.AppsV1Api;
-import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1Deployment;
-import io.kubernetes.client.openapi.models.V1Status;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
