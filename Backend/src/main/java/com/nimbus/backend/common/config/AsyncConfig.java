@@ -19,6 +19,7 @@ class AsyncConfig {  //might need for lightweight tasks.
         executor.setMaxPoolSize(10);
         executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("nimbus-async");
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
 
         return executor;

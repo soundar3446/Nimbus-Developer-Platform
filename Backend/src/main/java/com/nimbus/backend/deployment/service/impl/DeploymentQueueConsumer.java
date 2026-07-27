@@ -32,7 +32,7 @@ public class DeploymentQueueConsumer {
             long duration = System.currentTimeMillis() - startTime;
 
             // Mark deployment as completely healthy and log telemetry metrics (BIGINT ms support!)
-            updateStatus(event.getDeploymentId(), DeploymentStatus.SUCCESSFUL, duration);
+            updateStatus(event.getDeploymentId(), DeploymentStatus.RUNNING, duration);
             log.info(" [KAFKA CONSUMER] Workload successfully pushed out for deployment ID: {}", event.getDeploymentId());
 
         } catch (Exception e) {

@@ -18,6 +18,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final UserMapper userMapper;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional
@@ -30,6 +31,9 @@ public class UserServiceImpl implements UserService {
 
         // 1. Map DTO to Entity cleanly
         User user = userMapper.toEntity(request);
+        
+        // 2. Securely hash the password before persisting
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
 
         // 2. Save to database
         User savedUser = userRepository.save(user);

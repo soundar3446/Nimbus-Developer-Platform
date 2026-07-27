@@ -29,7 +29,7 @@ public class ApiLoggingFilter extends OncePerRequestFilter {
         }
 
         // 1. Wrap request and response to enable payload caching
-        ContentCachingRequestWrapper requestWrapper = new ContentCachingRequestWrapper(request,10);
+        ContentCachingRequestWrapper requestWrapper = new ContentCachingRequestWrapper(request, 1000);
         ContentCachingResponseWrapper responseWrapper = new ContentCachingResponseWrapper(response);
 
         long startTime = System.currentTimeMillis();

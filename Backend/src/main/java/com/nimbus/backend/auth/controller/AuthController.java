@@ -3,7 +3,6 @@ package com.nimbus.backend.auth.controller;
 import com.nimbus.backend.auth.dto.AuthenticationResponse;
 import com.nimbus.backend.auth.dto.LoginRequest;
 import com.nimbus.backend.auth.dto.RegisterRequest;
-import com.nimbus.backend.auth.jwt.TokenBlacklistService;
 import com.nimbus.backend.auth.service.AuthenticationService;
 import com.nimbus.backend.auth.service.CurrentUserService;
 import com.nimbus.backend.common.dto.ApiResponse;
@@ -24,8 +23,6 @@ public class AuthController {
     private final AuthenticationService authenticationService;
     private final UserService userService;
     private final CurrentUserService currentUserService;
-    private final TokenBlacklistService tokenBlacklistService;
-
     /**
      * POST /api/auth/register
      * Registers a new user and returns an access token.

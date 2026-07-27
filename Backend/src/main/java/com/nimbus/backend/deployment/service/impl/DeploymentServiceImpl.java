@@ -14,6 +14,7 @@ import com.nimbus.backend.project.dto.ProjectRequest;
 import com.nimbus.backend.project.entity.Project;
 import com.nimbus.backend.project.enums.ProjectStatus;
 import com.nimbus.backend.project.repository.ProjectRepository;
+import com.nimbus.backend.user.service.CurrentUserService;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1Deployment;
@@ -45,6 +46,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     private final DeploymentMapper deploymentMapper;
     private final DeploymentQueueProducer deploymentQueueProducer;
     private final DeploymentStreamService deploymentStreamService;
+    private final CurrentUserService currentUserService;
 
     @Override
     @Transactional
@@ -55,6 +57,8 @@ public class DeploymentServiceImpl implements DeploymentService {
 
         Project project = projectRepository.findByUuid(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project target not found"));
+        
+        validateProjectOwnership(project);
 
         String targetImage = project.getImageName() + ":latest";
 
@@ -249,6 +253,8 @@ public class DeploymentServiceImpl implements DeploymentService {
         Deployment deployment = deploymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment target not found for ID: " + id));
 
+        validateDeploymentOwnership(deployment);
+
         if (deployment.getStatus() == DeploymentStatus.RUNNING) {
             throw new IllegalStateException("Application deployment context is already active and running.");
         }
@@ -312,6 +318,8 @@ public class DeploymentServiceImpl implements DeploymentService {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
 
+        validateDeploymentOwnership(deployment);
+
         String k8sDeploymentName = deployment.getContainerName();
 
         if (k8sDeploymentName != null) {
@@ -342,6 +350,8 @@ public class DeploymentServiceImpl implements DeploymentService {
     public void restartDeployment(Long deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
+
+        validateDeploymentOwnership(deployment);
 
         if (deployment.getContainerName() == null) {
             throw new IllegalStateException("Cannot restart a deployment that has no active container footprint");
@@ -395,6 +405,8 @@ public class DeploymentServiceImpl implements DeploymentService {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
 
+        validateDeploymentOwnership(deployment);
+
         if (deployment.getContainerName() == null) {
             return "No execution runtime environment active for this deployment history log constraint.";
         }
@@ -415,9 +427,10 @@ public class DeploymentServiceImpl implements DeploymentService {
     @Override
     @Transactional(readOnly = true)
     public DeploymentStatus getDeploymentStatus(Long id) {
-        return deploymentRepository.findById(id)
-                .map(Deployment::getStatus)
+        Deployment deployment = deploymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment target not found for ID: " + id));
+        validateDeploymentOwnership(deployment);
+        return deployment.getStatus();
     }
 
     @Override
@@ -425,6 +438,8 @@ public class DeploymentServiceImpl implements DeploymentService {
     public List<DeploymentResponseDto> getProjectDeploymentHistory(String projectUuid) {
         Project project = projectRepository.findByUuid(projectUuid)
                 .orElseThrow(() -> new ResourceNotFoundException("Project target not found for UUID: " + projectUuid));
+
+        validateProjectOwnership(project);
 
         List<Deployment> historyTree = deploymentRepository.findByProjectIdOrderByIdDesc(project.getId());
 
@@ -438,6 +453,8 @@ public class DeploymentServiceImpl implements DeploymentService {
 
         Deployment historicalTarget = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Historical deployment record not found for ID: " + deploymentId));
+
+        validateDeploymentOwnership(historicalTarget);
 
         if (historicalTarget.getImageTag() == null) {
             throw new IllegalStateException("Target deployment cannot be used for rollback as it lacks a valid compiled image tag.");
@@ -551,11 +568,19 @@ public class DeploymentServiceImpl implements DeploymentService {
 
     @Override
     public List<DeploymentListResponse> listAllDeployments(String nameSpace){
-        return kubernetesService.listAllDeployments(nameSpace);
+        throw new org.springframework.security.access.AccessDeniedException("Listing entire cluster deployments is strictly forbidden.");
     }
 
     @Override
     public boolean deleteUserDeployment(String deploymentId, String namespace){
+        try {
+            Long dbId = Long.parseLong(deploymentId.replace("nimbus-", ""));
+            Deployment deployment = deploymentRepository.findById(dbId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
+            validateDeploymentOwnership(deployment);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid deployment ID format");
+        }
         return kubernetesService.deleteUserDeployment(deploymentId, namespace);
     }
 
@@ -642,5 +667,19 @@ public class DeploymentServiceImpl implements DeploymentService {
             for (File f : files) deleteDirectory(f);
         }
         path.delete();
+    }
+
+    private void validateDeploymentOwnership(Deployment deployment) {
+        String currentEmail = currentUserService.getCurrentUserEmail();
+        if (!deployment.getProject().getOwner().getEmail().equals(currentEmail)) {
+            throw new org.springframework.security.access.AccessDeniedException("You do not have permission to access this deployment infrastructure.");
+        }
+    }
+
+    private void validateProjectOwnership(Project project) {
+        String currentEmail = currentUserService.getCurrentUserEmail();
+        if (!project.getOwner().getEmail().equals(currentEmail)) {
+            throw new org.springframework.security.access.AccessDeniedException("You do not have permission to access this project infrastructure.");
+        }
     }
 }

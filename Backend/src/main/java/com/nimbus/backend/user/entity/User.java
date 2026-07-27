@@ -33,7 +33,8 @@ public class User extends BaseEntity {
     private String password;
 
     @Enumerated(EnumType.STRING)
-    private UserRole userRole;
+    @Builder.Default
+    private UserRole userRole = UserRole.USER;
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private GitHubIntegration githubIntegration;

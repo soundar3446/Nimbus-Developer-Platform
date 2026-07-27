@@ -69,6 +69,7 @@ public class Project extends BaseEntity {
     private String registryUsername;
 
     @Column(name = "registry_token")
+    @Convert(converter = com.nimbus.backend.common.security.StringCryptoConverter.class)
     private String registryToken;
 
     @Column(name = "subdomain", unique = true)

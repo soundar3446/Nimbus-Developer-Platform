@@ -3,17 +3,13 @@ package com.nimbus.backend.deployment.controller;
 import com.nimbus.backend.common.dto.ApiResponse;
 import com.nimbus.backend.deployment.dto.DeploymentResponseDto;
 import com.nimbus.backend.deployment.dto.DeploymentListResponse;
-import com.nimbus.backend.deployment.entity.Deployment;
 import com.nimbus.backend.deployment.enums.DeploymentStatus;
-import com.nimbus.backend.deployment.mapper.DeploymentMapper;
 import com.nimbus.backend.deployment.service.DeploymentService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/deployments")
