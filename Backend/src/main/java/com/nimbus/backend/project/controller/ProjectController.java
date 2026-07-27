@@ -103,4 +103,30 @@ public class ProjectController {
         );
         return ResponseEntity.ok(apiResponse);
     }
+
+    /**
+     * POST /api/projects/{uuid}/verify-domain
+     * Verifies the custom domain configuration via DNS lookup.
+     */
+    @PostMapping("/{uuid}/verify-domain")
+    public ResponseEntity<ApiResponse<ProjectResponse>> verifyCustomDomain(
+            @PathVariable("uuid") String uuid) {
+
+        try {
+            ProjectResponse response = projectService.verifyCustomDomain(uuid);
+            ApiResponse<ProjectResponse> apiResponse = new ApiResponse<>(
+                    true,
+                    "Custom domain verified successfully",
+                    response
+            );
+            return ResponseEntity.ok(apiResponse);
+        } catch (IllegalArgumentException e) {
+            ApiResponse<ProjectResponse> apiResponse = new ApiResponse<>(
+                    false,
+                    e.getMessage(),
+                    null
+            );
+            return ResponseEntity.badRequest().body(apiResponse);
+        }
+    }
 }

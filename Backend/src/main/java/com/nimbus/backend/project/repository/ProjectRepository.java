@@ -21,4 +21,8 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
         WHERE p.uuid = :uuid
 """)
     Optional<Project> findByUuid(@Param("uuid")String uuid);
+
+    boolean existsBySubdomain(String subdomain);
+    
+    boolean existsByCustomDomain(String customDomain);
 }
