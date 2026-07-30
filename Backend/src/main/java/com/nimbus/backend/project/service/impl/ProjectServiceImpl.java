@@ -1,7 +1,9 @@
 package com.nimbus.backend.project.service.impl;
 
-import com.nimbus.backend.auth.service.CurrentUserService; // 🔥 Inject our new helper component
+import com.nimbus.backend.auth.service.CurrentUserService; 
+import com.nimbus.backend.common.exception.AlreadyExistsException;
 import com.nimbus.backend.common.exception.ResourceNotFoundException;
+import com.nimbus.backend.common.util.DnsVerificationUtil;
 import com.nimbus.backend.project.dto.ProjectRequest;
 import com.nimbus.backend.project.dto.ProjectResponse;
 import com.nimbus.backend.project.entity.Project;
@@ -23,11 +25,19 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectRepository projectRepository;
     private final ProjectMapper projectMapper;
     private final CurrentUserService currentUserService;
+    private final DnsVerificationUtil dnsVerificationUtil;
 
     @Override
     @Transactional
     public ProjectResponse createProject(ProjectRequest request) {
         User currentUser = currentUserService.getCurrentUser();
+
+        if (request.getSubdomain() != null && projectRepository.existsBySubdomain(request.getSubdomain())) {
+            throw new AlreadyExistsException("Subdomain is already taken");
+        }
+        if (request.getCustomDomain() != null && projectRepository.existsByCustomDomain(request.getCustomDomain())) {
+            throw new AlreadyExistsException("Custom domain is already mapped to another project");
+        }
 
         Project project = projectMapper.toEntity(request);
         project.setOwner(currentUser);
@@ -57,6 +67,13 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse updateProject(String uuid, ProjectRequest request) {
         Project project = getProjectAndValidateOwner(uuid);
 
+        if (request.getSubdomain() != null && !request.getSubdomain().equals(project.getSubdomain()) && projectRepository.existsBySubdomain(request.getSubdomain())) {
+            throw new AlreadyExistsException("Subdomain is already taken");
+        }
+        if (request.getCustomDomain() != null && !request.getCustomDomain().equals(project.getCustomDomain()) && projectRepository.existsByCustomDomain(request.getCustomDomain())) {
+            throw new AlreadyExistsException("Custom domain is already mapped to another project");
+        }
+
         projectMapper.updateProjectFromRequest(request, project);
 
         return projectMapper.toResponse(projectRepository.save(project));
@@ -67,6 +84,27 @@ public class ProjectServiceImpl implements ProjectService {
     public void deleteProject(String uuid) {
         Project project = getProjectAndValidateOwner(uuid);
         projectRepository.delete(project);
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse verifyCustomDomain(String uuid) {
+        Project project = getProjectAndValidateOwner(uuid);
+
+        if (project.getCustomDomain() == null || project.getCustomDomain().isEmpty()) {
+            throw new IllegalArgumentException("No custom domain configured for this project");
+        }
+
+        boolean isValid = dnsVerificationUtil.verifyCnameRecord(project.getCustomDomain());
+        
+        project.setCustomDomainVerified(isValid);
+        projectRepository.save(project);
+
+        if (!isValid) {
+            throw new IllegalArgumentException("DNS verification failed. Please ensure the CNAME record points to cname.nimbus.app and DNS changes have propagated.");
+        }
+
+        return projectMapper.toResponse(project);
     }
 
     private Project getProjectAndValidateOwner(String uuid) {

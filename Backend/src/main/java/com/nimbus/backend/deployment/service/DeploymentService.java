@@ -1,5 +1,6 @@
 package com.nimbus.backend.deployment.service;
 
+import com.nimbus.backend.deployment.dto.DeploymentListResponse;
 import com.nimbus.backend.deployment.dto.DeploymentResponseDto;
 import com.nimbus.backend.deployment.dto.DeploymentTaskEvent;
 import com.nimbus.backend.deployment.entity.Deployment;
@@ -19,4 +20,6 @@ public interface DeploymentService {
    DeploymentResponseDto rollbackDeployment(Long deploymentId);
    void executeClusterWorkload(DeploymentTaskEvent event) throws Exception;
    void pushImageToRegistry(Long deploymentId, String projectUuid, String registryUrl, String username, String token, String targetImage) throws Exception;
+   List<DeploymentListResponse> listAllDeployments(String nameSpace);
+   boolean deleteUserDeployment(String DeploymentId, String namespace);
 }

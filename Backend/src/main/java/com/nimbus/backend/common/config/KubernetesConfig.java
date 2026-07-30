@@ -26,8 +26,8 @@ public class KubernetesConfig {
             try {
                 client = Config.fromCluster();
             } catch (Exception e) {
-                log.error("Failed to load in-cluster configuration, parsing default fallback", e);
-                client = new ApiClient();
+                log.error("CRITICAL: Failed to load in-cluster configuration.", e);
+                throw new RuntimeException("Failed to initialize Kubernetes API client in production mode", e);
             }
         } else {
             log.info("Development Mode: Parsing mounted local kubeconfig file...");

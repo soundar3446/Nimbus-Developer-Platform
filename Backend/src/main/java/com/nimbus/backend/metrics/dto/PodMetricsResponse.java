@@ -16,7 +16,7 @@ public class PodMetricsResponse {
     private String deploymentName;
     private List<MetricDataPoint> cpuUsageHistory;    // CPU usage in cores/millicores over time
     private List<MetricDataPoint> memoryUsageHistory; // Memory usage in Megabytes over time
-    private List<MetricDataPoint> networkIHistory;     // Network In/Out bandwidth
+    private List<MetricDataPoint> networkIoHistory;    // Network In/Out bandwidth
 
     @Data
     @AllArgsConstructor

@@ -21,14 +21,17 @@ public class GitHubClient {
     private final RestClient restClient = RestClient.builder().build();
 
     public GitHubTokenResponse exchangeCodeForToken(String code) {
+        org.springframework.util.MultiValueMap<String, String> formData = new org.springframework.util.LinkedMultiValueMap<>();
+        formData.add("client_id", gitHubConfig.getClientId());
+        formData.add("client_secret", gitHubConfig.getClientSecret());
+        formData.add("code", code);
+        formData.add("redirect_uri", gitHubConfig.getRedirectUri());
+
         return restClient.post()
                 .uri(gitHubConfig.getTokenUrl())
                 .accept(MediaType.APPLICATION_JSON)
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body("client_id=" + gitHubConfig.getClientId() +
-                        "&client_secret=" + gitHubConfig.getClientSecret() +
-                        "&code=" + code +
-                        "&redirect_uri=" + gitHubConfig.getRedirectUri())
+                .body(formData)
                 .retrieve()
                 .body(GitHubTokenResponse.class);
     }

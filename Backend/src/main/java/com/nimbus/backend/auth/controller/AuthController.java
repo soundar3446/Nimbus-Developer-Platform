@@ -8,6 +8,7 @@ import com.nimbus.backend.auth.service.CurrentUserService;
 import com.nimbus.backend.common.dto.ApiResponse;
 import com.nimbus.backend.user.dto.UserResponse;
 import com.nimbus.backend.user.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -22,7 +23,6 @@ public class AuthController {
     private final AuthenticationService authenticationService;
     private final UserService userService;
     private final CurrentUserService currentUserService;
-
     /**
      * POST /api/auth/register
      * Registers a new user and returns an access token.
@@ -33,8 +33,7 @@ public class AuthController {
         ApiResponse<AuthenticationResponse> apiResponse = new ApiResponse<>(
                 true,
                 "User registered successfully",
-                response
-        );
+                response);
         return new ResponseEntity<>(apiResponse, HttpStatus.CREATED);
     }
 
@@ -48,26 +47,40 @@ public class AuthController {
         ApiResponse<AuthenticationResponse> apiResponse = new ApiResponse<>(
                 true,
                 "Authentication successful",
-                response
-        );
+                response);
+        return ResponseEntity.ok(apiResponse);
+    }
+
+    /**
+     * POST /api/auth/logout
+     * Invalidates the current user session by adding the access token to a blacklist.
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest request) {
+        authenticationService.logout(request.getHeader("Authorization"));
+        ApiResponse<Void> apiResponse = new ApiResponse<>(
+                true,
+                "Logged out successfully",
+                null);
         return ResponseEntity.ok(apiResponse);
     }
 
     /**
      * GET /api/auth/me
-     * Fetches the current authenticated user's profile info using the active token session.
+     * Fetches the current authenticated user's profile info using the active token
+     * session.
      */
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserResponse>> getMyProfile() {
-        // userDetails.getUsername() retrieves the email injected into the SecurityContext by the JWT Filter
+        // userDetails.getUsername() retrieves the email injected into the
+        // SecurityContext by the JWT Filter
         String currentEmail = currentUserService.getCurrentUserEmail();
         UserResponse response = userService.getUserByEmail(currentEmail);
 
         ApiResponse<UserResponse> apiResponse = new ApiResponse<>(
                 true,
                 "Current user profile retrieved successfully",
-                response
-        );
+                response);
         return ResponseEntity.ok(apiResponse);
     }
 }

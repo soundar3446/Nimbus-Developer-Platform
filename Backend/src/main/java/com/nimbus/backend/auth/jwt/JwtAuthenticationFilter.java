@@ -22,6 +22,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     @Override
     protected void doFilterInternal(
@@ -42,6 +43,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 2. Extract JWT token payload substring
         jwt = authHeader.substring(7);
+        
+        // 2.5 Check if token is blacklisted (logged out)
+        if (tokenBlacklistService.isBlacklisted(jwt)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         userEmail = jwtService.extractUsername(jwt);
 
         // 3. Process validation if email exists and user isn't already authenticated in this thread context

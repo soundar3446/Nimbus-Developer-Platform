@@ -1,11 +1,12 @@
 package com.nimbus.backend.deployment.service;
 
+import com.nimbus.backend.deployment.dto.DeploymentListResponse;
 import com.nimbus.backend.deployment.dto.DeploymentSummaryDto;
 import io.kubernetes.client.openapi.models.V1Deployment;
-import io.kubernetes.client.openapi.models.V1Ingress;
 import io.kubernetes.client.openapi.models.V1Secret;
 import io.kubernetes.client.openapi.models.V1Service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -24,4 +25,6 @@ public interface KubernetesService {
     V1Secret createOrUpdateNamespacedSecret(String secretName, Map<String, String> rawSecrets) throws Exception;
     void streamPodLogs(String deploymentName, Consumer<String> logConsumer);
     void createDockerRegistrySecret(String secretName, String registryServer, String username, String password) throws Exception;
+    List<DeploymentListResponse> listAllDeployments(String namespace);
+    boolean deleteUserDeployment(String deploymentId, String namespace);
 }

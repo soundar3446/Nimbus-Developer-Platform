@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 
 @Slf4j
@@ -13,14 +14,14 @@ import java.net.URL;
 public class DockerServiceImpl implements DockerService {
 
     @Override
-    public String runContainer(String containerName, int hostPort, int targetExposedPort, String imageName) throws Exception {
+    public String runContainer(String containerName, int hostPort, int targetExposedPort, String imageName)
+            throws Exception {
         // Run container in detached mode (-d)
         ProcessBuilder pb = new ProcessBuilder(
                 "docker", "run", "-d",
                 "--name", containerName,
                 "-p", hostPort + ":" + targetExposedPort,
-                imageName + ":latest"
-        );
+                imageName + ":latest");
 
         Process process = pb.start();
 
@@ -56,7 +57,7 @@ public class DockerServiceImpl implements DockerService {
     public boolean pollHealthCheck(String urlString, int maxRetries, int delayMillis) {
         for (int i = 0; i < maxRetries; i++) {
             try {
-                URL url = new URL(urlString);
+                URL url = new URI(urlString).toURL();
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(2000);

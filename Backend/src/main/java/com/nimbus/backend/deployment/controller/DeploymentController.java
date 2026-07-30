@@ -2,9 +2,8 @@ package com.nimbus.backend.deployment.controller;
 
 import com.nimbus.backend.common.dto.ApiResponse;
 import com.nimbus.backend.deployment.dto.DeploymentResponseDto;
-import com.nimbus.backend.deployment.entity.Deployment;
+import com.nimbus.backend.deployment.dto.DeploymentListResponse;
 import com.nimbus.backend.deployment.enums.DeploymentStatus;
-import com.nimbus.backend.deployment.mapper.DeploymentMapper;
 import com.nimbus.backend.deployment.service.DeploymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -134,5 +133,50 @@ public class DeploymentController {
                 "Application version rollback recovery sequence executed successfully.",
                 latestActiveRun
         ));
+    }
+
+    /**
+     * GET /api/deployments
+     * To get all the deployments in a specific namespace. If no namespace is provided, it defaults to "default".
+     */
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<DeploymentListResponse>>> getAllDeployments(
+            @RequestParam(value = "namespace", defaultValue = "default") String namespace) {
+        
+        List<DeploymentListResponse> deployments = deploymentService.listAllDeployments(namespace);
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                "All deployments retrieved successfully.",
+                deployments
+        ));
+    }
+
+       /**
+     * Delete /api/deployments
+     * To delete a specific deployment in a given namespace.
+     */
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<?>> deleteDeployment(
+            @PathVariable("id") String id,
+            @RequestParam(value = "namespace", defaultValue = "default") String namespace) {
+
+        boolean deleted = deploymentService.deleteUserDeployment(id, namespace);
+
+        if (deleted) {
+            return ResponseEntity.ok(new ApiResponse<>(
+                    true,
+                    "Deployment deleted successfully",
+                    null
+            ));
+        } else {
+            return ResponseEntity.internalServerError()
+                    .body(new ApiResponse<>(
+                            false,
+                            "Deployment deletion failed",
+                            null
+                    ));
+        }
     }
 }

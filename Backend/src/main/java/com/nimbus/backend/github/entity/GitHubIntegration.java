@@ -4,10 +4,6 @@ import com.nimbus.backend.common.entity.BaseEntity;
 import com.nimbus.backend.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
-import java.time.Instant;
 
 @Entity
 @Table(name = "github_integrations")
@@ -33,6 +29,7 @@ public class GitHubIntegration extends BaseEntity {
     private String githubUsername;
 
     @Column(name = "github_access_token", nullable = false)
+    @Convert(converter = com.nimbus.backend.common.security.StringCryptoConverter.class)
     private String githubAccessToken;
 
     @Column(name = "github_avatar")

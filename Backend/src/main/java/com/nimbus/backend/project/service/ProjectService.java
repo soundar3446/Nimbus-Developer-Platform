@@ -12,4 +12,5 @@ public interface ProjectService {
     ProjectResponse getProjectById(String uuid);
     ProjectResponse updateProject(String uuid, ProjectRequest request);
     void deleteProject(String uuid);
+    ProjectResponse verifyCustomDomain(String uuid);
 }

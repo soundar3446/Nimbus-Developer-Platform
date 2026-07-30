@@ -1,8 +1,10 @@
 package com.nimbus.backend.deployment.service.impl;
 
+import com.nimbus.backend.deployment.dto.DeploymentListResponse;
 import com.nimbus.backend.deployment.dto.DeploymentSummaryDto;
 import com.nimbus.backend.deployment.service.KubernetesService;
 import io.kubernetes.client.custom.IntOrString;
+import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.ApiResponse;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
@@ -11,16 +13,18 @@ import io.kubernetes.client.openapi.apis.NetworkingV1Api;
 import io.kubernetes.client.openapi.models.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.ResponseBody;
 import org.springframework.stereotype.Service;
 
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -30,6 +34,7 @@ public class KubernetesServiceImpl implements KubernetesService {
     private final AppsV1Api appsV1Api;
     private final CoreV1Api coreV1Api;
     private final NetworkingV1Api networkingV1Api;
+    private final ApiClient apiClient;
 
     @Override
     public V1Deployment deployApplication(String deploymentName, String imageName, int targetExposedPort, Map<String, String> envVariables) throws Exception {
@@ -543,6 +548,106 @@ public class KubernetesServiceImpl implements KubernetesService {
             log.error("Error streaming pod logs for {}", deploymentName, e);
             logConsumer.accept("Error reading log stream: " + e.getMessage());
         }
+    }
+
+
+    @Override
+    public List<DeploymentListResponse> listAllDeployments(String namespace) {
+        List<DeploymentListResponse> responseList = new ArrayList<>();
+        AppsV1Api appsApi = new AppsV1Api(apiClient);
+        CoreV1Api coreApi = new CoreV1Api(apiClient);
+
+        try {
+            // 1. Fetch deployments in namespace (or all namespaces if null/empty)
+            List<V1Deployment> deployments = (namespace == null || namespace.isEmpty()) 
+                    ? appsApi.listDeploymentForAllNamespaces().execute().getItems()
+                    : appsApi.listNamespacedDeployment(namespace).execute().getItems();
+
+            // 2. Fetch all pods to map to deployments
+            List<V1Pod> allPods = (namespace == null || namespace.isEmpty())
+                    ? coreApi.listPodForAllNamespaces().execute().getItems()
+                    : coreApi.listNamespacedPod(namespace).execute().getItems();
+
+            for (V1Deployment dep : deployments) {
+                String depName = dep.getMetadata().getName();
+                String depNamespace = dep.getMetadata().getNamespace();
+
+                // Skip system deployments if desired (e.g., metrics-server, coredns)
+                if (depName.startsWith("prometheus-") || depName.startsWith("metrics-server")) {
+                    continue;
+                }
+
+                int desiredReplicas = dep.getSpec().getReplicas() != null ? dep.getSpec().getReplicas() : 0;
+                int readyReplicas = dep.getStatus().getReadyReplicas() != null ? dep.getStatus().getReadyReplicas() : 0;
+
+                List<String> matchingPodNames = allPods.stream()
+                        .filter(pod -> pod.getMetadata().getName() != null && pod.getMetadata().getName().startsWith(depName + "-"))
+                        .map(pod -> pod.getMetadata().getName())
+                        .collect(Collectors.toList());
+
+                String age = calculateAge(dep.getMetadata().getCreationTimestamp());
+
+                String status = (readyReplicas == desiredReplicas && desiredReplicas > 0) ? "Healthy"
+                              : (readyReplicas == 0) ? "Degraded" : "Progressing";
+
+                responseList.add(DeploymentListResponse.builder()
+                        .deploymentName(depName)
+                        .namespace(depNamespace)
+                        .replicas(desiredReplicas)
+                        .readyReplicas(readyReplicas)
+                        .status(status)
+                        .age(age)
+                        .podNames(matchingPodNames)
+                        .build());
+            }
+        } catch (Exception e) {
+            log.error("Failed to list Kubernetes deployments", e);
+        }
+
+        return responseList;
+    }
+
+    @Override
+    public boolean deleteUserDeployment(String deploymentId, String namespace) {
+        String deploymentName = deploymentId.startsWith("nimbus-") ? deploymentId : "nimbus-" + deploymentId;
+        String targetNamespace = (namespace != null && !namespace.isEmpty()) ? namespace : "default";
+
+        AppsV1Api appsApi = new AppsV1Api(apiClient);
+        CoreV1Api coreApi = new CoreV1Api(apiClient);
+
+        try {
+            log.info("Attempting to delete deployment '{}' in namespace '{}'", deploymentName, targetNamespace);
+
+            // 1. Delete Kubernetes Deployment (Cascade background deletes pods)
+            V1Status status = appsApi.deleteNamespacedDeployment(
+                    deploymentName,
+                    targetNamespace
+            ).propagationPolicy("Background").execute();
+
+            log.info("Successfully deleted deployment '{}', status: {}", deploymentName, status.getStatus());
+
+            // 2. Optionally clean up associated Service (if created with same prefix name)
+            try {
+                coreApi.deleteNamespacedService(deploymentName, targetNamespace).execute();
+                log.info("Cleaned up service '{}'", deploymentName);
+            } catch (Exception e) {
+                log.warn("Associated service '{}' not found or already deleted", deploymentName);
+            }
+
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to delete deployment '{}' in namespace '{}'", deploymentName, targetNamespace, e);
+            return false;
+        }
+    }
+
+    private String calculateAge(OffsetDateTime creationTimestamp) {
+        if (creationTimestamp == null) return "Unknown";
+        Duration duration = Duration.between(creationTimestamp, OffsetDateTime.now());
+        long hours = duration.toHours();
+        if (hours < 1) return duration.toMinutes() + "m";
+        if (hours < 24) return hours + "h";
+        return duration.toDays() + "d";
     }
 
     public void createDockerRegistrySecret(String secretName, String registryServer, String username, String password) throws Exception {
