@@ -229,7 +229,7 @@ public class DeploymentServiceImpl implements DeploymentService {
             throw e; // Rethrow exception out to trigger the consumer's error handling isolation block
         } finally {
             if (workspace != null && workspace.exists()) {
-                deleteDirectory(workspace);
+                org.springframework.util.FileSystemUtils.deleteRecursively(workspace);
             }
         }
     }
@@ -536,12 +536,7 @@ public class DeploymentServiceImpl implements DeploymentService {
             deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 40,
                     "Authenticating with container registry " + registryUrl + "...");
 
-            executeSystemCommand(
-                    deploymentId, projectUuid, null,
-                    "docker", "login", registryUrl,
-                    "-u", username,
-                    "-p", token
-            );
+            executeDockerLogin(deploymentId, projectUuid, registryUrl, username, token);
         }
 
         // 2. Push compiled image to remote registry
@@ -571,10 +566,16 @@ public class DeploymentServiceImpl implements DeploymentService {
             Deployment deployment = deploymentRepository.findById(dbId)
                     .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
             validateDeploymentOwnership(deployment);
+            
+            boolean result = kubernetesService.deleteUserDeployment(deploymentId, namespace);
+            if (result) {
+                deploymentRepository.delete(deployment);
+                log.info("Successfully removed deployment tracking record for ID: {}", dbId);
+            }
+            return result;
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid deployment ID format");
         }
-        return kubernetesService.deleteUserDeployment(deploymentId, namespace);
     }
 
 
@@ -654,12 +655,30 @@ public class DeploymentServiceImpl implements DeploymentService {
         }
     }
 
-    private void deleteDirectory(File path) {
-        File[] files = path.listFiles();
-        if (files != null) {
-            for (File f : files) deleteDirectory(f);
+    private void executeDockerLogin(Long deploymentId, String projectUuid, String registryUrl, String username, String token) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("docker", "login", registryUrl, "-u", username, "--password-stdin");
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+
+        // Securely pass the token via stdin to prevent it from showing up in ps aux
+        try (java.io.OutputStream os = process.getOutputStream()) {
+            os.write(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.write('\n');
+            os.flush();
         }
-        path.delete();
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                log.info("[DOCKER-LOGIN] {}", line);
+                deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 42, line);
+            }
+        }
+
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("Docker login failed with code: " + exitCode);
+        }
     }
 
     private void validateDeploymentOwnership(Deployment deployment) {

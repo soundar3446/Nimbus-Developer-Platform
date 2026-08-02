@@ -4,6 +4,6 @@ import com.nimbus.backend.metrics.dto.PodMetricsResponse;
 
 public interface PrometheusMetricsService {
 
-    PodMetricsResponse getPodMetrics(String deploymentName, long startEpochSec, long endEpochSec);
+    PodMetricsResponse getPodMetrics(Long deploymentId, Long startEpochSec, Long endEpochSec);
 
 }

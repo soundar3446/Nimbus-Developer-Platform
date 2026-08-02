@@ -8,6 +8,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 
+import com.nimbus.backend.common.dto.ApiResponse;
+import com.nimbus.backend.common.exception.ResourceNotFoundException;
+import com.nimbus.backend.deployment.entity.Deployment;
+import com.nimbus.backend.deployment.repository.DeploymentRepository;
+import com.nimbus.backend.auth.service.CurrentUserService;
+
 @RestController
 @RequestMapping("/api/v1/metrics")
 @RequiredArgsConstructor
@@ -16,18 +22,19 @@ public class MetricsController {
     private final PrometheusMetricsService prometheusMetricsService;
 
     @GetMapping("/deployments/{deploymentId}")
-    public ResponseEntity<PodMetricsResponse> getDeploymentMetrics(
+    public ResponseEntity<ApiResponse<PodMetricsResponse>> getDeploymentMetrics(
             @PathVariable Long deploymentId,
             @RequestParam(required = false) Long start,
             @RequestParam(required = false) Long end) {
 
-        long now = Instant.now().getEpochSecond();
-        long endEpoch = (end != null) ? end : now;
-        long startEpoch = (start != null) ? start : now - 3600; // Default to last 1 hour
+        PodMetricsResponse metrics = prometheusMetricsService.getPodMetrics(deploymentId, start, end);
 
-        String k8sDeploymentName = "nimbus-" + deploymentId;
-        PodMetricsResponse metrics = prometheusMetricsService.getPodMetrics(k8sDeploymentName, startEpoch, endEpoch);
+        ApiResponse<PodMetricsResponse> apiResponse = new ApiResponse<>(
+                true,
+                "Metrics retrieved successfully",
+                metrics
+        );
 
-        return ResponseEntity.ok(metrics);
+        return ResponseEntity.ok(apiResponse);
     }
 }
