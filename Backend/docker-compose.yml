@@ -57,5 +57,19 @@ services:
     env_file:
       - config.env
 
+  frontend:
+    image: node:20-alpine
+    container_name: nimbus-frontend
+    working_dir: /app
+    volumes:
+      - ../Frontend:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8080/api/v1
+    depends_on:
+      - app
+
 volumes:
   postgres_data:
