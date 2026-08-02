@@ -13,6 +13,7 @@ import static org.mapstruct.MappingConstants.ComponentModel.SPRING;
 public interface DeploymentMapper {
 
     @Mapping(source = "project.uuid", target = "projectUuid")
+    @Mapping(source = "project.defaultBranch", target = "branch")
     DeploymentResponseDto toResponseDto(Deployment deployment);
 
     List<DeploymentResponseDto> toResponseDtoList(List<Deployment> deployments);

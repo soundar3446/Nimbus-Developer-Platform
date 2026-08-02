@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import jakarta.annotation.PostConstruct;
 
-import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -86,7 +85,6 @@ public class PrometheusMetricsServiceImpl implements PrometheusMetricsService {
     private List<MetricDataPoint> queryPrometheusRange(String query, long start, long end, String step) {
         List<MetricDataPoint> points = new ArrayList<>();
         try {
-            @SuppressWarnings("unchecked")
             Map<String, Object> response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/api/v1/query_range")

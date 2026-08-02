@@ -6,13 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 
 import com.nimbus.backend.common.dto.ApiResponse;
-import com.nimbus.backend.common.exception.ResourceNotFoundException;
-import com.nimbus.backend.deployment.entity.Deployment;
-import com.nimbus.backend.deployment.repository.DeploymentRepository;
-import com.nimbus.backend.auth.service.CurrentUserService;
 
 @RestController
 @RequestMapping("/api/v1/metrics")

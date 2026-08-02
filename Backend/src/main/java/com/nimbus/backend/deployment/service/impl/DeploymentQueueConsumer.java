@@ -1,8 +1,6 @@
 package com.nimbus.backend.deployment.service.impl;
 
 import com.nimbus.backend.deployment.dto.DeploymentTaskEvent;
-import com.nimbus.backend.deployment.enums.DeploymentStatus;
-import com.nimbus.backend.deployment.repository.DeploymentRepository;
 import com.nimbus.backend.deployment.service.DeploymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +13,6 @@ import org.springframework.stereotype.Component;
 public class DeploymentQueueConsumer {
 
     private final DeploymentService deploymentService;
-    private final DeploymentRepository deploymentRepository;
 
     @KafkaListener(topics = com.nimbus.backend.common.config.KafkaTopicConfig.DEPLOYMENT_BUILDS_TOPIC, groupId = "nimbus-deployment-group", containerFactory = "kafkaListenerContainerFactory")
     public void consumeDeploymentTask(DeploymentTaskEvent event) {

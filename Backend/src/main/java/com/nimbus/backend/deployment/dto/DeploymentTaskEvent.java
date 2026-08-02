@@ -22,6 +22,7 @@ public class DeploymentTaskEvent {
 
     private String gitRepoUrl;
     private String branch;
+    private String githubAccessToken;
 
     private Map<String, String> environmentVariables;
 }

@@ -72,6 +72,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                 .gitRepoUrl(project.getGithubRepo())
                 .branch(project.getDefaultBranch() != null ? project.getDefaultBranch() : "main")
                 .environmentVariables(project.getEnvironmentVariables()) // Pass configurations safely
+                .githubAccessToken(project.getOwner().getGithubIntegration().getGithubAccessToken())
                 .build();
 
         deploymentQueueProducer.sendToBuildQueue(taskEvent);
@@ -101,11 +102,11 @@ public class DeploymentServiceImpl implements DeploymentService {
         String k8sDeploymentName = "nimbus-" + deployment.getId();
 
         try {
-            if (project.getOwner().getGithubIntegration() == null) {
-                throw new IllegalStateException("Project Owner does not have active GitHub Integration");
+            String token = event.getGithubAccessToken();
+            if (token == null || token.isBlank()) {
+                throw new IllegalStateException("Project Owner does not have active GitHub Integration or token is missing");
             }
 
-            String token = project.getOwner().getGithubIntegration().getGithubAccessToken();
             workspace = gitService.cloneRepository(event.getGitRepoUrl(), token, event.getBranch());
 
             String dfRelativePath = (project.getDockerfilePath() != null && !project.getDockerfilePath().isBlank())
@@ -241,7 +242,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
-    @Transactional
     public void startDeployment(Long id) {
         Deployment deployment = deploymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment target not found for ID: " + id));
@@ -306,7 +306,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
-    @Transactional
     public void stopDeployment(Long deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
@@ -339,7 +338,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
-    @Transactional
     public void restartDeployment(Long deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
@@ -393,7 +391,6 @@ public class DeploymentServiceImpl implements DeploymentService {
 
 
     @Override
-    @Transactional(readOnly = true)
     public String getDeploymentLogs(Long deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
@@ -440,7 +437,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
-    @Transactional
     public DeploymentResponseDto rollbackDeployment(Long deploymentId) {
         long startTime = System.currentTimeMillis();
 
