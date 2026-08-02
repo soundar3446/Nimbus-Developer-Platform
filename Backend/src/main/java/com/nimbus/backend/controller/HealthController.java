@@ -8,16 +8,19 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.nimbus.backend.common.dto.ApiResponse;
+
 @RestController
 @RequestMapping("/api")
 public class HealthController {
 
     @GetMapping("/health")
-    public ResponseEntity<Map<String, String>> checkHealth() {
-        Map<String, String> response = new HashMap<>();
-        response.put("status", "UP");
-        response.put("message", "Nimbus Backend is running");
+    public ResponseEntity<ApiResponse<Map<String, String>>> checkHealth() {
+        Map<String, String> data = new HashMap<>();
+        data.put("status", "UP");
+        data.put("message", "Nimbus Backend is running");
 
+        ApiResponse<Map<String, String>> response = new ApiResponse<>(true, "Service is healthy", data);
         return ResponseEntity.ok(response);
     }
 }

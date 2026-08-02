@@ -55,9 +55,7 @@ public class KubernetesConfig {
         }
 
         // Disable strict JSON validation to handle newer cluster versions gracefully
-        if (client.getJSON() != null) {
-            client.getJSON().setLenientOnJson(true);
-        }
+        io.kubernetes.client.openapi.JSON.setLenientOnJson(true);
 
          log.debug("Kubernetes API Base URL: {}", client.getBasePath());
          log.debug("Authentication methods: {}", client.getAuthentications().keySet());

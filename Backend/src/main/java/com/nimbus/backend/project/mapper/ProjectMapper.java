@@ -5,10 +5,10 @@ import com.nimbus.backend.project.dto.ProjectResponse;
 import com.nimbus.backend.project.entity.Project;
 import org.mapstruct.*;
 
-@Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
+@Mapper(componentModel = MappingConstants.ComponentModel.SPRING, unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface ProjectMapper {
 
-    Project toEntity(ProjectRequest request);
+    Project toEntity(ProjectRequest request);   
 
     @Mapping(source = "owner.id", target = "ownerId")
     @Mapping(source = "owner.email", target = "ownerEmail")

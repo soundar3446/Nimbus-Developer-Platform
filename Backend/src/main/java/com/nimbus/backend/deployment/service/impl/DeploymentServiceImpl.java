@@ -72,6 +72,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                 .gitRepoUrl(project.getGithubRepo())
                 .branch(project.getDefaultBranch() != null ? project.getDefaultBranch() : "main")
                 .environmentVariables(project.getEnvironmentVariables()) // Pass configurations safely
+                .githubAccessToken(project.getOwner().getGithubIntegration().getGithubAccessToken())
                 .build();
 
         deploymentQueueProducer.sendToBuildQueue(taskEvent);
@@ -101,11 +102,11 @@ public class DeploymentServiceImpl implements DeploymentService {
         String k8sDeploymentName = "nimbus-" + deployment.getId();
 
         try {
-            if (project.getOwner().getGithubIntegration() == null) {
-                throw new IllegalStateException("Project Owner does not have active GitHub Integration");
+            String token = event.getGithubAccessToken();
+            if (token == null || token.isBlank()) {
+                throw new IllegalStateException("Project Owner does not have active GitHub Integration or token is missing");
             }
 
-            String token = project.getOwner().getGithubIntegration().getGithubAccessToken();
             workspace = gitService.cloneRepository(event.getGitRepoUrl(), token, event.getBranch());
 
             String dfRelativePath = (project.getDockerfilePath() != null && !project.getDockerfilePath().isBlank())
@@ -229,7 +230,7 @@ public class DeploymentServiceImpl implements DeploymentService {
             throw e; // Rethrow exception out to trigger the consumer's error handling isolation block
         } finally {
             if (workspace != null && workspace.exists()) {
-                deleteDirectory(workspace);
+                org.springframework.util.FileSystemUtils.deleteRecursively(workspace);
             }
         }
     }
@@ -241,7 +242,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
-    @Transactional
     public void startDeployment(Long id) {
         Deployment deployment = deploymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment target not found for ID: " + id));
@@ -306,7 +306,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
-    @Transactional
     public void stopDeployment(Long deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
@@ -339,7 +338,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
-    @Transactional
     public void restartDeployment(Long deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
@@ -393,7 +391,6 @@ public class DeploymentServiceImpl implements DeploymentService {
 
 
     @Override
-    @Transactional(readOnly = true)
     public String getDeploymentLogs(Long deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
@@ -440,7 +437,6 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
-    @Transactional
     public DeploymentResponseDto rollbackDeployment(Long deploymentId) {
         long startTime = System.currentTimeMillis();
 
@@ -536,12 +532,7 @@ public class DeploymentServiceImpl implements DeploymentService {
             deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 40,
                     "Authenticating with container registry " + registryUrl + "...");
 
-            executeSystemCommand(
-                    deploymentId, projectUuid, null,
-                    "docker", "login", registryUrl,
-                    "-u", username,
-                    "-p", token
-            );
+            executeDockerLogin(deploymentId, projectUuid, registryUrl, username, token);
         }
 
         // 2. Push compiled image to remote registry
@@ -571,10 +562,16 @@ public class DeploymentServiceImpl implements DeploymentService {
             Deployment deployment = deploymentRepository.findById(dbId)
                     .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
             validateDeploymentOwnership(deployment);
+            
+            boolean result = kubernetesService.deleteUserDeployment(deploymentId, namespace);
+            if (result) {
+                deploymentRepository.delete(deployment);
+                log.info("Successfully removed deployment tracking record for ID: {}", dbId);
+            }
+            return result;
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid deployment ID format");
         }
-        return kubernetesService.deleteUserDeployment(deploymentId, namespace);
     }
 
 
@@ -654,12 +651,30 @@ public class DeploymentServiceImpl implements DeploymentService {
         }
     }
 
-    private void deleteDirectory(File path) {
-        File[] files = path.listFiles();
-        if (files != null) {
-            for (File f : files) deleteDirectory(f);
+    private void executeDockerLogin(Long deploymentId, String projectUuid, String registryUrl, String username, String token) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("docker", "login", registryUrl, "-u", username, "--password-stdin");
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+
+        // Securely pass the token via stdin to prevent it from showing up in ps aux
+        try (java.io.OutputStream os = process.getOutputStream()) {
+            os.write(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.write('\n');
+            os.flush();
         }
-        path.delete();
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                log.info("[DOCKER-LOGIN] {}", line);
+                deploymentStreamService.streamProgress(deploymentId, projectUuid, DeploymentStatus.BUILDING, 42, line);
+            }
+        }
+
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("Docker login failed with code: " + exitCode);
+        }
     }
 
     private void validateDeploymentOwnership(Deployment deployment) {
