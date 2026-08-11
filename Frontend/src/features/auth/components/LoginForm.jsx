@@ -1,12 +1,10 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { Mail, Lock } from 'lucide-react';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
-import { login } from '../../../services/authService';
+import { useAuth } from '../../../hooks/useAuth';
 
 const loginSchema = z.object({
   email: z.string().min(1, "Email is required").email("Invalid email address"),
@@ -14,22 +12,14 @@ const loginSchema = z.object({
 });
 
 export default function LoginForm() {
-  const navigate = useNavigate();
+  const { login, isLoggingIn, loginError } = useAuth();
   
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(loginSchema)
   });
 
-  const mutation = useMutation({
-    mutationFn: login,
-    onSuccess: (data) => {
-      // In real app, store token/user context here
-      navigate('/dashboard');
-    }
-  });
-
   const onSubmit = (data) => {
-    mutation.mutate(data);
+    login(data);
   };
 
   return (
@@ -66,11 +56,11 @@ export default function LoginForm() {
         <a href="#" className="text-primary hover:text-primary-hover font-medium transition-colors">Forgot password?</a>
       </div>
 
-      <Button type="submit" isLoading={mutation.isPending} className="mt-2">
+      <Button type="submit" isLoading={isLoggingIn} className="mt-2">
         Sign In
       </Button>
 
-      {mutation.isError && (
+      {loginError && (
         <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm text-center">
           Authentication failed. Please check your credentials.
         </div>
