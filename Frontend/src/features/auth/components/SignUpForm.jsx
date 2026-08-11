@@ -1,12 +1,10 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { User, Mail, Lock } from 'lucide-react';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
-import { signup } from '../../../services/authService';
+import { useAuth } from '../../../hooks/useAuth';
 
 const signupSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -15,22 +13,14 @@ const signupSchema = z.object({
 });
 
 export default function SignUpForm() {
-  const navigate = useNavigate();
+  const { signup, isSigningUp, signupError } = useAuth();
   
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(signupSchema)
   });
 
-  const mutation = useMutation({
-    mutationFn: signup,
-    onSuccess: (data) => {
-      // In real app, store token/user context here
-      navigate('/dashboard');
-    }
-  });
-
   const onSubmit = (data) => {
-    mutation.mutate(data);
+    signup(data);
   };
 
   return (
@@ -71,11 +61,11 @@ export default function SignUpForm() {
         <Lock className="absolute left-4 top-[34px] w-5 h-5 text-text-muted" />
       </div>
 
-      <Button type="submit" isLoading={mutation.isPending} className="mt-2">
+      <Button type="submit" isLoading={isSigningUp} className="mt-2">
         Create Account
       </Button>
 
-      {mutation.isError && (
+      {signupError && (
         <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm text-center">
           Failed to create account. Please try again.
         </div>
