@@ -45,7 +45,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     @Transactional
     public Deployment initiateDeploymentPipeline(String projectId) {
 
-        long startTime = System.currentTimeMillis();
+
         log.info("Running on thread: {}", Thread.currentThread().getName());
 
         Project project = projectRepository.findByUuid(projectId)
@@ -258,7 +258,7 @@ public class DeploymentServiceImpl implements DeploymentService {
         try {
             log.info("Starting existing Kubernetes container layout: {}", k8sDeploymentName);
 
-            boolean needsRecreation = false;
+
             Optional<V1Deployment> deploymentOpt = Optional.empty();
 
             deploymentOpt = kubernetesService.getDeployment(k8sDeploymentName);
@@ -274,7 +274,7 @@ public class DeploymentServiceImpl implements DeploymentService {
                     kubernetesService.createApplicationIngress(k8sDeploymentName, project.getSubdomain(),project.getCustomDomain(),Boolean.TRUE.equals(project.getCustomDomainVerified()));
                 } else {
                     log.info("Deployment footprint found. Scaling replica configuration back up to 1.");
-                    V1Deployment k8sDep = deploymentOpt.get();
+
                     kubernetesService.updateDeploymentReplicas(deploymentOpt.get(), 1);
                 }
 
@@ -450,7 +450,7 @@ public class DeploymentServiceImpl implements DeploymentService {
         }
 
         Project project = historicalTarget.getProject();
-        String k8sDeploymentName = "nimbus-" + historicalTarget.getId();
+
 
         log.info("Initiating historical rollback recovery sequence to image version: [ {} ]", historicalTarget.getImageTag());
 

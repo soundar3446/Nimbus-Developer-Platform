@@ -111,7 +111,7 @@ public class KubernetesServiceImpl implements KubernetesService {
         for (int i = 0; i < maxRetries; i++) {
             try {
                 // Notice the method call matches the official Java client definition format:
-                V1PodList podList = coreV1Api.listNamespacedPod(namespace).execute();
+                V1PodList podList = coreV1Api.listNamespacedPod(namespace).labelSelector(labelSelector).execute();
 
                 if (podList.getItems() != null && !podList.getItems().isEmpty()) {
                     V1Pod activePod = podList.getItems().get(0);
@@ -275,14 +275,13 @@ public class KubernetesServiceImpl implements KubernetesService {
 
         V1IngressSpec ingressSpec = new V1IngressSpec()
                 .ingressClassName("nginx") // Standard NGINX Ingress Controller
-                .rules(rules);
+                .rules(rules)
+                .addTlsItem(tlsSpec);
 
         V1Ingress ingress = new V1Ingress()
                 .apiVersion("networking.k8s.io/v1")
                 .kind("Ingress")
-                .metadata(new V1ObjectMeta()
-                        .name(ingressName)
-                        .putAnnotationsItem("nginx.ingress.kubernetes.io/ssl-redirect", "false")) // Handled in Phase 9 with Cert-Manager
+                .metadata(metadata)
                 .spec(ingressSpec);
 
         try {

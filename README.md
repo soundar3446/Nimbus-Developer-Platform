@@ -90,6 +90,14 @@ Deployment Status / Logs / History
 
 # Technology Stack
 
+## Frontend
+
+- React 19
+- Vite
+- Tailwind CSS
+- Tanstack React Query
+- Lucide React Icons
+
 ## Backend
 
 - Java 21
@@ -99,23 +107,26 @@ Deployment Status / Logs / History
 - Hibernate
 - Maven
 
-## Database
+## Database & Event Streaming
 
 - PostgreSQL
+- Apache Kafka & Zookeeper (Asynchronous deployment queues)
 
 ## Containerization
 
 - Docker
 - Docker Compose
 
-## Orchestration
+## Orchestration & Observability
 
 - Kubernetes
 - Kubernetes Java SDK
+- Prometheus (Hardware metrics & pod telemetry)
 
 ## Authentication
 
 - JWT Authentication
+- GitHub OAuth
 
 ---
 
@@ -308,7 +319,7 @@ Environment variables are injected into Pods using Kubernetes Secret references.
 
 # Current Capabilities
 
-- GitHub repository integration
+- GitHub repository integration & OAuth authentication
 - Docker image build
 - Kubernetes Deployment creation
 - Kubernetes Service creation
@@ -321,6 +332,9 @@ Environment variables are injected into Pods using Kubernetes Secret references.
 - Kubernetes Secrets
 - Live deployment logs
 - Deployment status tracking
+- **Event-driven Architecture**: Apache Kafka for asynchronous build queues
+- **Metrics & Observability**: Real-time Prometheus CPU/RAM pod telemetry
+- **Custom Domains**: Domain verification and automated routing
 
 ---
 
@@ -328,17 +342,12 @@ Environment variables are injected into Pods using Kubernetes Secret references.
 
 - GitHub Webhooks
 - Continuous Deployment
-- Build Pipeline Execution
-- Multi-stage Build Support
-- Image Registry Integration
 - Horizontal Pod Autoscaling
 - Resource Limits
 - Canary Deployments
 - Blue-Green Deployments
 - Preview Environments
 - Multi-cluster Deployments
-- Metrics and Observability
-- Custom Domains
 - HTTPS Certificate Management
 - Team and Organization Support
 - Role-Based Access Control
