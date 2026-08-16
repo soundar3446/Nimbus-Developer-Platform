@@ -81,6 +81,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
+    @org.springframework.scheduling.annotation.Async("taskExecutor")
     public void executeClusterWorkload(DeploymentTaskEvent event) throws Exception {
         long startTime = System.currentTimeMillis();
         log.info("➔ [KAFKA CONTEXT] Engine processing build pipeline thread: {}", Thread.currentThread().getName());

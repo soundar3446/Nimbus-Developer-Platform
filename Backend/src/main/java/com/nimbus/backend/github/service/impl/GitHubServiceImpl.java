@@ -92,11 +92,26 @@ public class GitHubServiceImpl implements GitHubService {
         return client.fetchUserProfile(integration.getGithubAccessToken());
     }
 
+    // Cache GitHub API responses to prevent Rate Limiting and reduce UI latency
+    private final com.google.common.cache.Cache<String, List<GitHubRepoResponse>> repoCache = com.google.common.cache.CacheBuilder.newBuilder()
+            .expireAfterWrite(5, java.util.concurrent.TimeUnit.MINUTES)
+            .maximumSize(1000)
+            .build();
+
     @Override
     @Transactional(readOnly = true)
     public List<GitHubRepoResponse> getConnectedRepositories() {
         GitHubIntegration integration = getValidIntegration();
-        return client.fetchUserRepositories(integration.getGithubAccessToken());
+        String token = integration.getGithubAccessToken();
+        
+        List<GitHubRepoResponse> cachedRepos = repoCache.getIfPresent(token);
+        if (cachedRepos != null) {
+            return cachedRepos;
+        }
+
+        List<GitHubRepoResponse> freshRepos = client.fetchUserRepositories(token);
+        repoCache.put(token, freshRepos);
+        return freshRepos;
     }
 
     @Override

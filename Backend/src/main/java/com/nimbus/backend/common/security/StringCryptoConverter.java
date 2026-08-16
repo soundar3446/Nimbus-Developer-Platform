@@ -30,16 +30,35 @@ public class StringCryptoConverter implements AttributeConverter<String, String>
         return "NimbusDevKey1234".getBytes();
     }
 
+    private static final Key SECRET_KEY = new SecretKeySpec(KEY, ALGORITHM);
+
+    private static final ThreadLocal<Cipher> ENCRYPT_CIPHER = ThreadLocal.withInitial(() -> {
+        try {
+            Cipher cipher = Cipher.getInstance(ALGORITHM);
+            cipher.init(Cipher.ENCRYPT_MODE, SECRET_KEY);
+            return cipher;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize encryption cipher", e);
+        }
+    });
+
+    private static final ThreadLocal<Cipher> DECRYPT_CIPHER = ThreadLocal.withInitial(() -> {
+        try {
+            Cipher cipher = Cipher.getInstance(ALGORITHM);
+            cipher.init(Cipher.DECRYPT_MODE, SECRET_KEY);
+            return cipher;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize decryption cipher", e);
+        }
+    });
+
     @Override
     public String convertToDatabaseColumn(String attribute) {
         if (!StringUtils.hasText(attribute)) {
             return attribute;
         }
         try {
-            Key key = new SecretKeySpec(KEY, ALGORITHM);
-            Cipher cipher = Cipher.getInstance(ALGORITHM);
-            cipher.init(Cipher.ENCRYPT_MODE, key);
-            byte[] encrypted = cipher.doFinal(attribute.getBytes());
+            byte[] encrypted = ENCRYPT_CIPHER.get().doFinal(attribute.getBytes());
             return Base64.getEncoder().encodeToString(encrypted);
         } catch (Exception e) {
             throw new RuntimeException("Error encrypting field before database persistence.", e);
@@ -52,10 +71,7 @@ public class StringCryptoConverter implements AttributeConverter<String, String>
             return dbData;
         }
         try {
-            Key key = new SecretKeySpec(KEY, ALGORITHM);
-            Cipher cipher = Cipher.getInstance(ALGORITHM);
-            cipher.init(Cipher.DECRYPT_MODE, key);
-            byte[] decrypted = cipher.doFinal(Base64.getDecoder().decode(dbData));
+            byte[] decrypted = DECRYPT_CIPHER.get().doFinal(Base64.getDecoder().decode(dbData));
             return new String(decrypted);
         } catch (Exception e) {
             // If decryption fails (e.g., trying to read old unencrypted data), 

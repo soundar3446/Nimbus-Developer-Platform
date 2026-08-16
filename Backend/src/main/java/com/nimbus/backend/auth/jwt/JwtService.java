@@ -86,11 +86,18 @@ public class JwtService {
                 .getPayload();
     }
 
+    private SecretKey cachedSigningKey;
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        this.cachedSigningKey = Keys.hmacShaKeyFor(keyBytes);
+    }
+
     /**
      * Cryptographic helper to transform the Hex-encoded secret string into a HMAC SHA SecretKey object
      */
     private SecretKey getSigningKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
-        return Keys.hmacShaKeyFor(keyBytes);
+        return this.cachedSigningKey;
     }
 }

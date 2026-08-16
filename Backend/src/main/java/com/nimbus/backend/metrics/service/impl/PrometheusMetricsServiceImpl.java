@@ -69,15 +69,23 @@ public class PrometheusMetricsServiceImpl implements PrometheusMetricsService {
             "sum(rate(container_network_receive_bytes_total{pod=~\"%s-.*\",container!=\"\",container!=\"POD\"}[2m])) + sum(rate(container_network_transmit_bytes_total{pod=~\"%s-.*\",container!=\"\",container!=\"POD\"}[2m]))",
             formattedPrefix, formattedPrefix);
 
-        List<MetricDataPoint> cpuData = queryPrometheusRange(cpuQuery, startEpoch, endEpoch, "15s");
-        List<MetricDataPoint> memoryData = queryPrometheusRange(memoryQuery, startEpoch, endEpoch, "15s");
-        List<MetricDataPoint> networkIoData = queryPrometheusRange(networkQuery, startEpoch, endEpoch, "15s");
+        // Execute all 3 HTTP requests to Prometheus concurrently to reduce latency by ~66%
+        java.util.concurrent.CompletableFuture<List<MetricDataPoint>> cpuFuture = 
+            java.util.concurrent.CompletableFuture.supplyAsync(() -> queryPrometheusRange(cpuQuery, startEpoch, endEpoch, "15s"));
+        
+        java.util.concurrent.CompletableFuture<List<MetricDataPoint>> memoryFuture = 
+            java.util.concurrent.CompletableFuture.supplyAsync(() -> queryPrometheusRange(memoryQuery, startEpoch, endEpoch, "15s"));
+            
+        java.util.concurrent.CompletableFuture<List<MetricDataPoint>> networkFuture = 
+            java.util.concurrent.CompletableFuture.supplyAsync(() -> queryPrometheusRange(networkQuery, startEpoch, endEpoch, "15s"));
+
+        java.util.concurrent.CompletableFuture.allOf(cpuFuture, memoryFuture, networkFuture).join();
 
         return PodMetricsResponse.builder()
                 .deploymentName(deploymentName)
-                .cpuUsageHistory(cpuData)
-                .memoryUsageHistory(memoryData)
-                .networkIoHistory(networkIoData)
+                .cpuUsageHistory(cpuFuture.join())
+                .memoryUsageHistory(memoryFuture.join())
+                .networkIoHistory(networkFuture.join())
                 .build();
     }
 

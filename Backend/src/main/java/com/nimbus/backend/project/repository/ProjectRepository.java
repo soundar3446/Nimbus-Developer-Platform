@@ -10,7 +10,17 @@ import java.util.Optional;
 
 public interface ProjectRepository extends JpaRepository<Project, Long> {
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"owner"})
     List<Project> findByOwnerEmail(String email);
+
+    @Query("""
+        SELECT p
+        FROM Project p
+        JOIN FETCH p.owner o
+        LEFT JOIN FETCH o.githubIntegration
+        WHERE p.uuid = :uuid AND o.email = :email
+    """)
+    Optional<Project> findByUuidAndOwnerEmail(@Param("uuid") String uuid, @Param("email") String email);
 
     @Query("""
         SELECT p

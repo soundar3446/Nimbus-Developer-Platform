@@ -60,30 +60,27 @@ The platform provides an API-driven deployment engine capable of building contai
 
 # Architecture
 
-```
-                 GitHub Repository
-                        │
-                        ▼
-                Repository Binding
-                        │
-                        ▼
-                 Docker Image Build
-                        │
-                        ▼
-                Local Docker Registry
-                        │
-                        ▼
-             Kubernetes Deployment
-                        │
-         ┌──────────────┼──────────────┐
-         ▼              ▼              ▼
-     Deployment      Service        Ingress
-         │
-         ▼
-      Running Pods
-         │
-         ▼
-Deployment Status / Logs / History
+```mermaid
+graph TD
+    User((User)) -->|Clicks Deploy| API[Spring Boot REST API]
+    API -->|1. Saves Initial Status| DB[(PostgreSQL)]
+    API -->|2. Publishes Event| Kafka[Apache Kafka Topic<br> 'deployment-builds']
+    API -->|3. Returns 200 OK| User
+    
+    Kafka -->|4. Consumes Event| Consumer[DeploymentQueueConsumer]
+    
+    subclass AsyncExecution
+        Consumer -.->|5. Hands off to| ThreadPool[nimbus-async Thread Pool]
+        ThreadPool -->|6. Clones Repo| Git[Git Clone]
+        Git -->|7. Builds Image| Docker[Docker Build]
+        Docker -->|8. Applies Manifests| K8s[Kubernetes Cluster]
+        K8s -->|9. Waits for Health| Health[DeploymentTrackingEngine]
+        Health -->|10. Updates Final Status| DB
+    end
+    
+    style Kafka fill:#ff9900,stroke:#333,stroke-width:2px
+    style ThreadPool fill:#66ccff,stroke:#333,stroke-width:2px
+    style K8s fill:#326ce5,stroke:#333,stroke-width:2px
 ```
 
 ---

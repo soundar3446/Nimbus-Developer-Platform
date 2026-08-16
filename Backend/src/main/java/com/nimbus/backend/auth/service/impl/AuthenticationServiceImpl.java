@@ -13,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +24,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService javaJwtService;
-    private final UserDetailsService userDetailsService;
     private final AuthenticationManager authenticationManager; // Handles credential checks
     private final TokenBlacklistService tokenBlacklistService;
 
@@ -66,7 +64,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Transactional(readOnly = true)
     public AuthenticationResponse login(LoginRequest request) {
         // 1. Delegate credential verification to Spring Security's AuthenticationManager
-        // This automatically checks the password against the database via CustomUserDetailsService
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getEmail(),
@@ -74,12 +71,17 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 )
         );
 
-        // 2. If authentication succeeds, load the user details and mint a fresh JWT
-        UserDetails userDetails = userDetailsService.loadUserByUsername(request.getEmail());
-        String jwtToken = javaJwtService.generateToken(userDetails);
-
-        // 3. Fetch the full user entity profile details for the response metadata
+        // 2. Fetch the full user entity profile details just ONCE (instead of hitting DB 3 times)
         User user = userRepository.findByEmail(request.getEmail()).orElseThrow();
+
+        // 3. Build UserDetails directly in memory to avoid another loadUserByUsername DB hit
+        UserDetails userDetails = org.springframework.security.core.userdetails.User
+                .withUsername(user.getEmail())
+                .password(user.getPassword())
+                .authorities(java.util.Collections.emptyList())
+                .build();
+
+        String jwtToken = javaJwtService.generateToken(userDetails);
 
         return AuthenticationResponse.builder()
                 .token(jwtToken)
