@@ -12,7 +12,6 @@ import com.nimbus.backend.project.repository.ProjectRepository;
 import com.nimbus.backend.project.service.ProjectService;
 import com.nimbus.backend.user.entity.User;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -108,13 +107,12 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     private Project getProjectAndValidateOwner(String uuid) {
-        Project project = projectRepository.findByUuid(uuid)
-                .orElseThrow(() -> new ResourceNotFoundException("Project not found with id: " + uuid));
-
         String currentEmail = currentUserService.getCurrentUserEmail();
-        if (!project.getOwner().getEmail().equals(currentEmail)) {
-            throw new AccessDeniedException("You do not have permission to manage this project.");
-        }
-        return project;
+        
+        // Optimize: Push the ownership validation down to the SQL query instead of bringing 
+        // the project into JVM memory just to check the owner.
+        // Returning a 404 instead of 403 for cross-tenant access prevents ID enumeration attacks.
+        return projectRepository.findByUuidAndOwnerEmail(uuid, currentEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found or you do not have permission to manage it."));
     }
 }

@@ -1,6 +1,5 @@
 package com.nimbus.backend.auth.jwt;
 
-import com.nimbus.backend.auth.service.CustomUserDetailsService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,7 +20,6 @@ import java.io.IOException;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
-    private final CustomUserDetailsService userDetailsService;
     private final TokenBlacklistService tokenBlacklistService;
 
     @Override
@@ -54,7 +52,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 3. Process validation if email exists and user isn't already authenticated in this thread context
         if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+            // OPTIMIZATION: Avoid hitting the database on every single API request. 
+            // The JWT signature is already verified, so we can trust the email payload.
+            UserDetails userDetails = org.springframework.security.core.userdetails.User
+                    .withUsername(userEmail)
+                    .password("") // Password not needed for stateless JWT validation
+                    .authorities(java.util.Collections.emptyList())
+                    .build();
 
             if (jwtService.isTokenValid(jwt, userDetails)) {
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
