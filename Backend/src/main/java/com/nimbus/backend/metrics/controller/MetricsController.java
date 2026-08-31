@@ -17,19 +17,12 @@ public class MetricsController {
     private final PrometheusMetricsService prometheusMetricsService;
 
     @GetMapping("/deployments/{deploymentId}")
-    public ResponseEntity<ApiResponse<PodMetricsResponse>> getDeploymentMetrics(
+    public reactor.core.publisher.Mono<ResponseEntity<ApiResponse<PodMetricsResponse>>> getDeploymentMetrics(
             @PathVariable Long deploymentId,
             @RequestParam(required = false) Long start,
             @RequestParam(required = false) Long end) {
 
-        PodMetricsResponse metrics = prometheusMetricsService.getPodMetrics(deploymentId, start, end);
-
-        ApiResponse<PodMetricsResponse> apiResponse = new ApiResponse<>(
-                true,
-                "Metrics retrieved successfully",
-                metrics
-        );
-
-        return ResponseEntity.ok(apiResponse);
+        return prometheusMetricsService.getPodMetrics(deploymentId, start, end)
+                .map(metrics -> ResponseEntity.ok(new ApiResponse<>(true, "Metrics retrieved successfully", metrics)));
     }
 }

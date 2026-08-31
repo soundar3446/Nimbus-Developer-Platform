@@ -23,7 +23,7 @@ public interface KubernetesService {
     void rolloutRestartDeployment(V1Deployment deployment) throws Exception;
     void updateDeploymentImage(String deploymentName, String newImageTag, Map<String, String> envVariables) throws Exception;
     V1Secret createOrUpdateNamespacedSecret(String secretName, Map<String, String> rawSecrets) throws Exception;
-    void streamPodLogs(String deploymentName, Consumer<String> logConsumer);
+    reactor.core.publisher.Flux<String> streamPodLogs(String deploymentName);
     void createDockerRegistrySecret(String secretName, String registryServer, String username, String password) throws Exception;
     List<DeploymentListResponse> listAllDeployments(String namespace);
     boolean deleteUserDeployment(String deploymentId, String namespace);

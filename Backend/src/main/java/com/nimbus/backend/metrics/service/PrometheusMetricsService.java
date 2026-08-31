@@ -1,9 +1,10 @@
 package com.nimbus.backend.metrics.service;
 
 import com.nimbus.backend.metrics.dto.PodMetricsResponse;
+import reactor.core.publisher.Mono;
 
 public interface PrometheusMetricsService {
 
-    PodMetricsResponse getPodMetrics(Long deploymentId, Long startEpochSec, Long endEpochSec);
+    Mono<PodMetricsResponse> getPodMetrics(Long deploymentId, Long startEpochSec, Long endEpochSec);
 
 }

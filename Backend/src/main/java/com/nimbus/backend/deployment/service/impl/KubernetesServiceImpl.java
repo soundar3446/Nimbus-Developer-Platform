@@ -512,41 +512,45 @@ public class KubernetesServiceImpl implements KubernetesService {
     }
 
     @Override
-    public void streamPodLogs(String deploymentName, Consumer<String> logConsumer) {
-        try {
-            // 1. Fetch active pod using fluent list call
-            V1PodList podList = coreV1Api.listNamespacedPod("default")
-                    .labelSelector("app=" + deploymentName)
-                    .execute();
+    public reactor.core.publisher.Flux<String> streamPodLogs(String deploymentName) {
+        return reactor.core.publisher.Flux.<String>create(sink -> {
+            try {
+                // 1. Fetch active pod using fluent list call
+                V1PodList podList = coreV1Api.listNamespacedPod("default")
+                        .labelSelector("app=" + deploymentName)
+                        .execute();
 
-            if (podList.getItems() == null || podList.getItems().isEmpty()) {
-                logConsumer.accept("No active pods found for deployment: " + deploymentName);
-                return;
-            }
-
-            String podName = podList.getItems().get(0).getMetadata().getName();
-
-            // 2. Execute with HTTP Info to get the raw ApiResponse container
-            ApiResponse<String> apiResponse = coreV1Api.readNamespacedPodLog(podName, "default")
-                    .tailLines(100)
-                    .follow(true)
-                    .executeWithHttpInfo();
-
-            // 3. Read raw stream from the underlying OkHttp client call
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                    apiResponse.getData() != null ?
-                            new java.io.ByteArrayInputStream(apiResponse.getData().getBytes()) :
-                            java.io.InputStream.nullInputStream()))) {
-
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    logConsumer.accept(line);
+                if (podList.getItems() == null || podList.getItems().isEmpty()) {
+                    sink.next("No active pods found for deployment: " + deploymentName);
+                    sink.complete();
+                    return;
                 }
+
+                String podName = podList.getItems().get(0).getMetadata().getName();
+
+                // 2. Execute with HTTP Info to get the raw ApiResponse container
+                ApiResponse<String> apiResponse = coreV1Api.readNamespacedPodLog(podName, "default")
+                        .tailLines(100)
+                        .follow(true)
+                        .executeWithHttpInfo();
+
+                // 3. Read raw stream from the underlying OkHttp client call and push to Flux
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                        apiResponse.getData() != null ?
+                                new java.io.ByteArrayInputStream(apiResponse.getData().getBytes()) :
+                                java.io.InputStream.nullInputStream()))) {
+
+                    String line;
+                    while (!sink.isCancelled() && (line = reader.readLine()) != null) {
+                        sink.next(line);
+                    }
+                    sink.complete();
+                }
+            } catch (Exception e) {
+                log.error("Error streaming pod logs for {}", deploymentName, e);
+                sink.error(new RuntimeException("Error reading log stream: " + e.getMessage()));
             }
-        } catch (Exception e) {
-            log.error("Error streaming pod logs for {}", deploymentName, e);
-            logConsumer.accept("Error reading log stream: " + e.getMessage());
-        }
+        }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
 

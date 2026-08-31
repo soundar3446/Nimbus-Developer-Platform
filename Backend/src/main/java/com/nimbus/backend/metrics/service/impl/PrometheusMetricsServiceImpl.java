@@ -11,8 +11,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
+import org.springframework.web.reactive.function.client.WebClient;
 import jakarta.annotation.PostConstruct;
+import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -27,18 +28,18 @@ public class PrometheusMetricsServiceImpl implements PrometheusMetricsService {
     private final DeploymentRepository deploymentRepository;
     private final CurrentUserService currentUserService;
 
-   private RestClient restClient;
+    private WebClient webClient;
 
     @PostConstruct
     public void init() {
-        this.restClient = RestClient.builder().baseUrl(prometheusUrl).build();
+        this.webClient = WebClient.builder().baseUrl(prometheusUrl).build();
     }
 
     @Value("${prometheus.url:http://host.docker.internal:9090}")
     private String prometheusUrl;
 
     @Override
-    public PodMetricsResponse getPodMetrics(Long deploymentId, Long startEpochSec, Long endEpochSec) {
+    public Mono<PodMetricsResponse> getPodMetrics(Long deploymentId, Long startEpochSec, Long endEpochSec) {
 
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment footprint target not found"));
@@ -52,88 +53,78 @@ public class PrometheusMetricsServiceImpl implements PrometheusMetricsService {
         long startEpoch = (startEpochSec != null) ? startEpochSec : now - 3600; // Default to last 1 hour
 
         String deploymentName = "nimbus-" + deploymentId;
-       String formattedPrefix = deploymentName;
+        String formattedPrefix = deploymentName;
 
-        // CPU usage rate per pod (Cores) using rate with 2m window
         String cpuQuery = String.format(
             "sum(rate(container_cpu_usage_seconds_total{pod=~\"%s-.*\",container!=\"\",container!=\"POD\"}[2m]))",
             formattedPrefix);
 
-        // Memory usage per pod in MB
         String memoryQuery = String.format(
             "sum(container_memory_working_set_bytes{pod=~\"%s-.*\",container!=\"\",container!=\"POD\"}) / 1024 / 1024",
             formattedPrefix);
 
-        // Network I/O (bytes/sec)
         String networkQuery = String.format(
             "sum(rate(container_network_receive_bytes_total{pod=~\"%s-.*\",container!=\"\",container!=\"POD\"}[2m])) + sum(rate(container_network_transmit_bytes_total{pod=~\"%s-.*\",container!=\"\",container!=\"POD\"}[2m]))",
             formattedPrefix, formattedPrefix);
 
-        // Execute all 3 HTTP requests to Prometheus concurrently to reduce latency by ~66%
-        java.util.concurrent.CompletableFuture<List<MetricDataPoint>> cpuFuture = 
-            java.util.concurrent.CompletableFuture.supplyAsync(() -> queryPrometheusRange(cpuQuery, startEpoch, endEpoch, "15s"));
-        
-        java.util.concurrent.CompletableFuture<List<MetricDataPoint>> memoryFuture = 
-            java.util.concurrent.CompletableFuture.supplyAsync(() -> queryPrometheusRange(memoryQuery, startEpoch, endEpoch, "15s"));
-            
-        java.util.concurrent.CompletableFuture<List<MetricDataPoint>> networkFuture = 
-            java.util.concurrent.CompletableFuture.supplyAsync(() -> queryPrometheusRange(networkQuery, startEpoch, endEpoch, "15s"));
+        Mono<List<MetricDataPoint>> cpuMono = queryPrometheusRange(cpuQuery, startEpoch, endEpoch, "15s");
+        Mono<List<MetricDataPoint>> memoryMono = queryPrometheusRange(memoryQuery, startEpoch, endEpoch, "15s");
+        Mono<List<MetricDataPoint>> networkMono = queryPrometheusRange(networkQuery, startEpoch, endEpoch, "15s");
 
-        java.util.concurrent.CompletableFuture.allOf(cpuFuture, memoryFuture, networkFuture).join();
-
-        return PodMetricsResponse.builder()
-                .deploymentName(deploymentName)
-                .cpuUsageHistory(cpuFuture.join())
-                .memoryUsageHistory(memoryFuture.join())
-                .networkIoHistory(networkFuture.join())
-                .build();
+        // Reactively zip the 3 independent network streams into a single aggregated response
+        return Mono.zip(cpuMono, memoryMono, networkMono)
+                .map(tuple -> PodMetricsResponse.builder()
+                        .deploymentName(deploymentName)
+                        .cpuUsageHistory(tuple.getT1())
+                        .memoryUsageHistory(tuple.getT2())
+                        .networkIoHistory(tuple.getT3())
+                        .build());
     }
 
     @SuppressWarnings("unchecked")
-    private List<MetricDataPoint> queryPrometheusRange(String query, long start, long end, String step) {
-        List<MetricDataPoint> points = new ArrayList<>();
-        try {
-            Map<String, Object> response = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/api/v1/query_range")
-                            .queryParam("query", query)
-                            .queryParam("start", start)
-                            .queryParam("end", end)
-                            .queryParam("step", step)
-                            .build())
-                    .retrieve()
-                    .body(Map.class);
-            if (response != null && "success".equals(response.get("status"))) {
-                Map<String, Object> data = (Map<String, Object>) response.get("data");
-                if (data != null) {
-                    List<Map<String, Object>> result = (List<Map<String, Object>>) data.get("result");
-
-                    if (result != null && !result.isEmpty()) {
-                        List<List<Object>> values = (List<List<Object>>) result.get(0).get("values");
-                        if (values != null) {
-                            for (List<Object> val : values) {
-                                long timestamp = ((Number) val.get(0)).longValue();
-                                String rawValue = val.get(1).toString();
-                                
-                                double value = 0.0;
-                                try {
-                                    value = Double.parseDouble(rawValue);
-                                    if (Double.isNaN(value) || Double.isInfinite(value)) {
-                                        value = 0.0;
+    private Mono<List<MetricDataPoint>> queryPrometheusRange(String query, long start, long end, String step) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/v1/query_range")
+                        .queryParam("query", query)
+                        .queryParam("start", start)
+                        .queryParam("end", end)
+                        .queryParam("step", step)
+                        .build())
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(response -> {
+                    List<MetricDataPoint> points = new ArrayList<>();
+                    if (response != null && "success".equals(response.get("status"))) {
+                        Map<String, Object> data = (Map<String, Object>) response.get("data");
+                        if (data != null) {
+                            List<Map<String, Object>> result = (List<Map<String, Object>>) data.get("result");
+                            if (result != null && !result.isEmpty()) {
+                                List<List<Object>> values = (List<List<Object>>) result.get(0).get("values");
+                                if (values != null) {
+                                    for (List<Object> val : values) {
+                                        long timestamp = ((Number) val.get(0)).longValue();
+                                        String rawValue = val.get(1).toString();
+                                        double value = 0.0;
+                                        try {
+                                            value = Double.parseDouble(rawValue);
+                                            if (Double.isNaN(value) || Double.isInfinite(value)) {
+                                                value = 0.0;
+                                            }
+                                        } catch (NumberFormatException e) {
+                                            log.warn("Failed to parse metric value '{}', defaulting to 0.0", rawValue);
+                                        }
+                                        points.add(new MetricDataPoint(timestamp, value));
                                     }
-                                } catch (NumberFormatException e) {
-                                    log.warn("Failed to parse metric value '{}', defaulting to 0.0", rawValue);
                                 }
-                                
-                                points.add(new MetricDataPoint(timestamp, value));
                             }
                         }
                     }
-                }
-            }
-        } catch (Exception e) {
-            log.error("Failed to query Prometheus metrics for query: {}", query, e);
-        }
-        return points;
+                    return points;
+                })
+                .onErrorResume(e -> {
+                    log.error("Failed to query Prometheus metrics for query: {}", query, e);
+                    return Mono.just(new ArrayList<>());
+                });
     }
 }

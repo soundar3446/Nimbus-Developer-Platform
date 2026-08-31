@@ -1,36 +1,29 @@
 package com.nimbus.backend.deployment.controller;
 
-import com.nimbus.backend.deployment.service.impl.DeploymentStreamService;
 import com.nimbus.backend.deployment.service.KubernetesService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.handler.annotation.DestinationVariable;
-import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.stereotype.Controller;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 
-@Controller
+@RestController
 @RequiredArgsConstructor
 @Slf4j
 public class DeploymentLogStreamController {
 
     private final KubernetesService kubernetesService;
-    private final DeploymentStreamService deploymentStreamService;
 
-    @Async("taskExecutor")
-    @MessageMapping("/deployments/{deploymentId}/logs/attach")
-    public void attachLiveLogs(@DestinationVariable Long deploymentId) {
+    @GetMapping(value = "/api/v1/deployments/{deploymentId}/logs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> attachLiveLogs(@PathVariable Long deploymentId) {
         String k8sDeploymentName = "nimbus-" + deploymentId;
-        log.info("Client attached to live log stream for deployment: {}", k8sDeploymentName);
+        log.info("Client attached to live SSE log stream for deployment: {}", k8sDeploymentName);
 
-        kubernetesService.streamPodLogs(k8sDeploymentName, logLine -> {
-            deploymentStreamService.streamProgress(
-                    deploymentId,
-                    null,
-                    null,
-                    100,
-                    logLine
-            );
-        });
+        // Native reactive SSE stream pulling logs directly from Kubernetes
+        return kubernetesService.streamPodLogs(k8sDeploymentName)
+                .doOnCancel(() -> log.info("Client disconnected from SSE log stream for: {}", k8sDeploymentName))
+                .doOnError(e -> log.error("SSE Log Stream failed for {}: {}", k8sDeploymentName, e.getMessage()));
     }
 }
